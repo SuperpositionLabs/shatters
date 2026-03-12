@@ -21,4 +21,4 @@ No third parties. No data collection. Just clean, reliable messaging relay.
 
 ## License
 
-GNU GPLv3 — see [LICENSE](LICENSE).
+GNU GPLv3 - see [LICENSE](LICENSE).
