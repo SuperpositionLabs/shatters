@@ -15,6 +15,8 @@
 
 ---
 
+[![Discord](https://badgen.net/badge/icon/discord?icon=discord&label)](https://discord.gg/aprKMKcMn5)
+
 A private, encrypted chat application for those who want complete control over their communication.  
 No third parties. No data collection. Just clean, reliable messaging relay.
 
