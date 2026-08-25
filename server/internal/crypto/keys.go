@@ -10,6 +10,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 )
@@ -79,7 +80,7 @@ func VerifySignedPrekey(identityKey, spkPublicKey, sig []byte, id uint32) error 
 	msg := make([]byte, 0, len(domainSignedPrek)+len(spkPublicKey)+4)
 	msg = append(msg, domainSignedPrek...)
 	msg = append(msg, spkPublicKey...)
-	msg = append(msg, byte(id>>24), byte(id>>16), byte(id>>8), byte(id))
+	msg = binary.BigEndian.AppendUint32(msg, id)
 
 	if !ed25519.Verify(ed25519.PublicKey(identityKey), msg, sig) {
 		return ErrBadSignature
