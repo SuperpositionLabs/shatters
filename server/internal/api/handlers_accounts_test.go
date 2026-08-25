@@ -205,5 +205,3 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	t.Cleanup(pool.Close)
 	return pool
 }
-
-
