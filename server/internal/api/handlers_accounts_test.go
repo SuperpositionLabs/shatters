@@ -21,6 +21,7 @@ import (
 type fixture struct {
 	body     []byte
 	identity ed25519.PublicKey
+	priv     ed25519.PrivateKey
 }
 
 func makeFixture(t *testing.T, mutate func(*registerRequest)) fixture {
@@ -68,7 +69,7 @@ func makeFixture(t *testing.T, mutate func(*registerRequest)) fixture {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	return fixture{body: body, identity: pub}
+	return fixture{body: body, identity: pub, priv: priv}
 }
 
 func postRegister(t *testing.T, h http.Handler, body []byte) *httptest.ResponseRecorder {
