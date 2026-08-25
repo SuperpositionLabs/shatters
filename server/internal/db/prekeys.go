@@ -78,8 +78,8 @@ func FetchBundle(ctx context.Context, pool *pgxpool.Pool, publicID string) (Bund
 	var (
 		b       Bundle
 		account [16]byte
-		spkID   int
-		otkID   int
+		spkID   uint32
+		otkID   uint32
 		otkPub  []byte
 	)
 	err = tx.QueryRow(ctx,
@@ -99,7 +99,7 @@ func FetchBundle(ctx context.Context, pool *pgxpool.Pool, publicID string) (Bund
 		}
 		return Bundle{}, fmt.Errorf("db: fetch bundle: %w", err)
 	}
-	b.SignedPrekey.ID = uint32(spkID)
+	b.SignedPrekey.ID = spkID
 
 	err = tx.QueryRow(ctx,
 		`DELETE FROM one_time_prekeys
@@ -114,7 +114,7 @@ func FetchBundle(ctx context.Context, pool *pgxpool.Pool, publicID string) (Bund
 		account[:]).Scan(&otkID, &otkPub)
 	switch {
 	case err == nil:
-		b.OneTimePrekey = &Prekey{ID: uint32(otkID), PublicKey: otkPub}
+		b.OneTimePrekey = &Prekey{ID: otkID, PublicKey: otkPub}
 	case errors.Is(err, pgx.ErrNoRows):
 		b.OneTimePrekey = nil
 	default:
@@ -126,3 +126,4 @@ func FetchBundle(ctx context.Context, pool *pgxpool.Pool, publicID string) (Bund
 	}
 	return b, nil
 }
+
