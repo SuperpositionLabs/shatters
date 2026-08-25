@@ -18,3 +18,6 @@ web/next-env.d.ts
 .idea/
 .vscode/
 Thumbs.db
+
+# TypeScript incremental builds
+*.tsbuildinfo
