@@ -91,4 +91,3 @@ func (s *Server) handleGetBundle(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
-

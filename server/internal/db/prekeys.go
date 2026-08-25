@@ -126,4 +126,3 @@ func FetchBundle(ctx context.Context, pool *pgxpool.Pool, publicID string) (Bund
 	}
 	return b, nil
 }
-

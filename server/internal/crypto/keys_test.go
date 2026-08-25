@@ -86,4 +86,3 @@ func TestVerifySignedPrekey(t *testing.T) {
 		t.Error("verification passed with corrupted signature")
 	}
 }
-
