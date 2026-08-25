@@ -120,7 +120,7 @@ func applyOne(ctx context.Context, pool *pgxpool.Pool, m migration) error {
 	if err != nil {
 		return fmt.Errorf("db: begin %d: %w", m.version, err)
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 
 	if _, err := tx.Exec(ctx, m.sql); err != nil {
 		return fmt.Errorf("db: apply %06d_%s: %w", m.version, m.name, err)
