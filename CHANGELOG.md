@@ -29,4 +29,27 @@ First milestone release of the Go rewrite (M0 - Foundation).
 - chi upgraded to v5.2.2 clearing a govulncheck finding (#7)
 - golang.org/x/text upgraded to v0.41.0 clearing a govulncheck finding (#9)
 
+## [0.2.0] - 2026-08-25
+
+Milestone M1 - Identities.
+
+### Added
+
+- Account registration API (`POST /v1/accounts`): public keys only, signed-prekey
+  verification, opaque key-derived account IDs, idempotent re-registration (#16)
+- Ed25519 challenge-response authentication: single-use nonces, hashed session
+  tokens, bearer middleware (#18)
+- Per-IP token-bucket rate limiting on unauthenticated endpoints - in-memory
+  only, no user tracking (#18)
+- Key directory: authenticated prekey upload and bundle fetch with atomic
+  one-time prekey consumption (`FOR UPDATE SKIP LOCKED`) (#20)
+- Next.js client workspace with local identity module (Ed25519 + X25519 via
+  libsodium), cross-language golden vector pinning client/server agreement (#22)
+- CI `web` job (vitest, typecheck, next build) (#22)
+
+### Security
+
+- gosec G115 findings cleared by removing narrow integer conversions (#16, #20)
+- golangci-lint upgraded to v2 (action v7); gosec to v2.28.0 for Go 1.25 (#9)
+
 [0.1.0]: https://github.com/SuperpositionLabs/shatters/releases/tag/v0.1.0
