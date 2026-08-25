@@ -125,12 +125,17 @@ func TestMigrateAppliesCleanAndIdempotent(t *testing.T) {
 	if err := Migrate(ctx, pool, migrations.FS); err != nil {
 		t.Fatalf("second Migrate() error = %v, want nil", err)
 	}
+
+	want, err := loadMigrations(migrations.FS)
+	if err != nil {
+		t.Fatalf("load embedded migrations: %v", err)
+	}
 	var n int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM schema_migrations").Scan(&n); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("schema_migrations rows = %d, want 1", n)
+	if n != len(want) {
+		t.Errorf("schema_migrations rows = %d, want %d", n, len(want))
 	}
 }
 

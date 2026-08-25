@@ -69,7 +69,7 @@ Inherited from the legacy relay's Ed25519 per-connection proofs, extended into a
 
 1. `POST /v1/auth/challenge { "account_id": "..." }` → server returns a fresh 32-byte nonce, stored with a 5-minute TTL, single use.
 2. Client signs `"shatters-auth-v1" || nonce` with `ik_priv`.
-3. `POST /v1/auth/verify { "account_id", "signature" }` → on success the server issues a session token (256-bit random). The token is returned in the response body and stored **hashed** in the database with an expiry.
+3. `POST /v1/auth/verify { "account_id", "nonce", "signature" }` → on success the server issues a session token (256-bit random). The token is returned in the response body and stored **hashed** in the database with an expiry.
 
 All authenticated endpoints accept `Authorization: Bearer <token>`.
 
