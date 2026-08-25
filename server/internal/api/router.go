@@ -59,6 +59,8 @@ func NewServer(pool *pgxpool.Pool, opts ...Option) http.Handler {
 			}
 			writeJSON(w, http.StatusOK, map[string]string{"account_id": account.PublicID})
 		})
+		r.Post("/v1/accounts/me/prekeys", s.handleUploadPrekeys)
+		r.Get("/v1/accounts/{accountID}/bundle", s.handleGetBundle)
 	})
 
 	return r
