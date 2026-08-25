@@ -12,6 +12,8 @@ import (
 
 	"github.com/SuperpositionLabs/shatters/server/internal/api"
 	"github.com/SuperpositionLabs/shatters/server/internal/config"
+	"github.com/SuperpositionLabs/shatters/server/internal/db"
+	"github.com/SuperpositionLabs/shatters/server/migrations"
 )
 
 func main() {
@@ -24,14 +26,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := &http.Server{
-		Addr:              cfg.Addr,
-		Handler:           api.NewRouter(),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	pool, err := db.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("database connection failed", "err", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	if err := db.Migrate(ctx, pool, migrations.FS); err != nil {
+		slog.Error("schema migration failed", "err", err)
+		os.Exit(1)
+	}
+
+	srv := &http.Server{
+		Addr:              cfg.Addr,
+		Handler:           api.NewServer(pool),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
