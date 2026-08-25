@@ -21,8 +21,9 @@ jobs:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
+          version: v2.13.1
           working-directory: server
 
   security:
@@ -35,7 +36,7 @@ jobs:
           cache-dependency-path: server/go.sum
       - name: gosec
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.21.4
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
           gosec -quiet ./...
         working-directory: server
       - name: govulncheck

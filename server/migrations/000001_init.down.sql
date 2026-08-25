@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS envelopes_recipient_idx;
+DROP TABLE IF EXISTS envelopes;
+DROP INDEX IF EXISTS session_tokens_expiry_idx;
+DROP TABLE IF EXISTS session_tokens;
+DROP INDEX IF EXISTS auth_challenges_expiry_idx;
+DROP TABLE IF EXISTS auth_challenges;
+DROP TABLE IF EXISTS one_time_prekeys;
+DROP TABLE IF EXISTS signed_prekeys;
+DROP TABLE IF EXISTS accounts;
+DROP TABLE IF EXISTS schema_migrations;
