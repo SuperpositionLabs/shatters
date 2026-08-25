@@ -1,0 +1,20 @@
+# Go
+*.exe
+*.test
+coverage.out
+
+# Node / web client
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+
+# Environment and local files
+.env
+.env.*
+*.local
+
+# Editors / OS
+.idea/
+.vscode/
+Thumbs.db
