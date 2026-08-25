@@ -8,7 +8,7 @@ import (
 )
 
 func TestHealthzReturnsOK(t *testing.T) {
-	h := NewRouter()
+	h := NewServer(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -30,7 +30,7 @@ func TestHealthzReturnsOK(t *testing.T) {
 }
 
 func TestHealthzContentType(t *testing.T) {
-	h := NewRouter()
+	h := NewServer(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
