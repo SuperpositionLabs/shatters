@@ -1,0 +1,32 @@
+# Local development stack: `docker compose up` from this directory.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shatters
+      POSTGRES_PASSWORD: shatters-dev
+      POSTGRES_DB: shatters
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shatters -d shatters"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  server:
+    build:
+      context: ../server
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://shatters:shatters-dev@db:5432/shatters?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
