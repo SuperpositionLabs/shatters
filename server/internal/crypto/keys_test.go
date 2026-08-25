@@ -86,3 +86,14 @@ func TestVerifySignedPrekey(t *testing.T) {
 		t.Error("verification passed with corrupted signature")
 	}
 }
+
+func TestAccountIDKnownVector(t *testing.T) {
+	// Cross-language golden vector: the TypeScript client must produce the
+	// exact same identifier (see web/src/lib/crypto/identity.test.ts).
+	got := AccountID(make([]byte, 32))
+	const want = "Wz9jOwRx1yVVyJB2l-fPxYeZ52FFZYKFKYOCLrFzKLo"
+	if got != want {
+		t.Errorf("AccountID(0x00*32) = %q, want %q", got, want)
+	}
+}
+
