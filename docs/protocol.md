@@ -136,6 +136,30 @@ Messages travel as **envelopes** — versioned, opaque blobs. The legacy relay's
 }
 ```
 
+The `ciphertext` field carries the **inner message**, a binary structure whose leading fields are unencrypted *within* the envelope. The responder needs the X3DH header before it holds any session state (§7), so it cannot be sealed; the server still learns nothing, because it only ever sees the outer blob.
+
+```
+version : u8 = 1
+type    : u8 = 1 (initial) | 2 (normal)
+
+if type == 1:
+  identity_key       : 32
+  identity_dh_key    : 32
+  ephemeral_key      : 32
+  signed_prekey_id   : u32be
+  has_otk            : u8
+  one_time_prekey_id : u32be     (only when has_otk = 1)
+
+dh_pub     : 32                  ratchet header (§8)
+pn         : u32be
+n          : u32be
+ciphertext : remainder           XChaCha20-Poly1305, tag included
+```
+
+A `type` byte rather than a length-prefixed union keeps parsing total: unknown versions, unknown types and truncated fields are decode errors, never a silently different message. A clipped *ciphertext* is not detectable here by design — the AEAD tag rejects it.
+
+An initiator repeats the type 1 header on every message until it successfully decrypts one from the responder, since until then it cannot know the handshake arrived.
+
 - Delivery path (M3): WebSocket push to online recipients; otherwise persisted in the `envelopes` table with a TTL (default 30 days) and pulled on reconnect.
 - ACKs are client-signed receipts confirming retrieval; the server deletes envelopes upon confirmed delivery.
 - The server cannot read `ciphertext`, learn recipients' contacts beyond routing metadata, or correlate beyond what §10 admits.
