@@ -34,7 +34,7 @@ A client device owns two keypairs generated locally at signup:
 - **Identity signing key**: Ed25519 `(ik_priv, ik_pub)`. Long-lived. Signs prekeys and authentication challenges.
 - **Identity DH key**: X25519 `(dh_priv, dh_pub)`. Long-lived. Used in X3DH.
 
-**Account ID** = `base64url(SHA-256(ik_pub || domain))`, with `domain = "shatters-account-v1"`. The raw public key is uploaded once at registration but all API addressing uses the account ID, keeping identifiers opaque.
+**Account ID** = `base64url(SHA-256(domain || ik_pub))`, with `domain = "shatters-account-v1"`. The domain separator is a *prefix*, matching the `shatters-spk-v1` and `shatters-auth-v1` constructions below: it binds the digest to its purpose before any attacker-influenced bytes are absorbed. The raw public key is uploaded once at registration but all API addressing uses the account ID, keeping identifiers opaque.
 
 There are no usernames, e-mails, or passwords anywhere in the system.
 
