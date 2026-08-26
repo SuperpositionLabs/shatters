@@ -70,6 +70,38 @@ jobs:
         run: go test -race ./...
         working-directory: server
 
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build server image
+        run: docker build -t shatters-server:ci server
+      - name: smoke test the built image
+        run: |
+          docker network create shatters-ci
+          docker run -d --name db --network shatters-ci \
+            -e POSTGRES_USER=shatters \
+            -e POSTGRES_PASSWORD=shatters-dev \
+            -e POSTGRES_DB=shatters \
+            --health-cmd "pg_isready -U shatters -d shatters" \
+            --health-interval 2s --health-timeout 3s --health-retries 15 \
+            postgres:16-alpine
+          for _ in $(seq 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' db)" = healthy ] && break
+            sleep 2
+          done
+          docker run -d --name server --network shatters-ci -p 8080:8080 \
+            -e PORT=8080 \
+            -e DATABASE_URL='postgres://shatters:shatters-dev@db:5432/shatters?sslmode=disable' \
+            shatters-server:ci
+          for _ in $(seq 30); do
+            curl -fsS http://localhost:8080/healthz && exit 0
+            sleep 2
+          done
+          echo "server never became healthy"
+          docker logs server
+          exit 1
+
   web:
     runs-on: ubuntu-latest
     defaults:
