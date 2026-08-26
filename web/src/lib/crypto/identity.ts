@@ -130,6 +130,30 @@ export interface SignedPrekey {
 }
 
 /**
+ * Builds the byte string a signed prekey signature covers:
+ *   "shatters-spk-v1" || x25519_public || id_be32
+ *
+ * Shared by the signing and verification paths so the two can never drift.
+ * Must match the Go construction in `crypto.VerifySignedPrekey`.
+ */
+export function signedPrekeyMessage(
+  publicKey: Uint8Array,
+  id: number,
+): Uint8Array {
+  const domain = new TextEncoder().encode(SIGNED_PREKEY_DOMAIN);
+  const idBytes = new Uint8Array(4);
+  new DataView(idBytes.buffer).setUint32(0, id, false); // big-endian
+
+  const message = new Uint8Array(
+    domain.length + publicKey.length + idBytes.length,
+  );
+  message.set(domain);
+  message.set(publicKey, domain.length);
+  message.set(idBytes, domain.length + publicKey.length);
+  return message;
+}
+
+/**
  * Creates an X25519 signed prekey bound to this identity:
  *   signature = Ed25519("shatters-spk-v1" || x25519_public || id_be32)
  * Must match the Go verification in `crypto.VerifySignedPrekey`.
@@ -141,16 +165,28 @@ export async function createSignedPrekey(
   const s = await sodium();
   const spk = s.crypto_kx_keypair();
 
-  const domain = new TextEncoder().encode(SIGNED_PREKEY_DOMAIN);
-  const idBytes = new Uint8Array(4);
-  new DataView(idBytes.buffer).setUint32(0, id, false); // big-endian
-  const message = new Uint8Array(
-    domain.length + spk.publicKey.length + idBytes.length,
+  const signature = await signDetached(
+    signingPrivateKey,
+    signedPrekeyMessage(spk.publicKey, id),
   );
-  message.set(domain);
-  message.set(spk.publicKey, domain.length);
-  message.set(idBytes, domain.length + spk.publicKey.length);
-
-  const signature = await signDetached(signingPrivateKey, message);
   return { id, publicKey: spk.publicKey, signature };
+}
+
+/**
+ * Verifies a signed prekey against the identity key that published it.
+ *
+ * This is what makes a fetched bundle trustworthy: the server hands out the
+ * prekeys, so without this check an operator could substitute its own and sit
+ * in the middle of the handshake.
+ */
+export async function verifySignedPrekey(
+  identityKey: Uint8Array,
+  prekey: SignedPrekey,
+): Promise<boolean> {
+  const s = await sodium();
+  return s.crypto_sign_verify_detached(
+    prekey.signature,
+    signedPrekeyMessage(prekey.publicKey, prekey.id),
+    identityKey,
+  );
 }
