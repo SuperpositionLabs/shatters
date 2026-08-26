@@ -39,7 +39,7 @@ Read more in [`docs/protocol.md`](docs/protocol.md) and
 
 ## Quick start
 
-Prerequisites: Docker (or Go 1.22+ / Node 18+ for manual runs).
+Prerequisites: Docker (or Go 1.25+ / Node 22+ for manual runs).
 
 ```sh
 cd deploy
