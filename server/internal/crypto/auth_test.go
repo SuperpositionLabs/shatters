@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"testing"
 )
 
@@ -22,6 +23,42 @@ func TestRandomNonceLengthAndUniqueness(t *testing.T) {
 			t.Fatal("duplicate nonce generated")
 		}
 		seen[key] = true
+	}
+}
+
+func TestAuthProofKnownVector(t *testing.T) {
+	// Cross-language golden vector: the TypeScript client must produce this
+	// exact signature for the same seed and nonce, so that its auth proofs
+	// verify here (see web/src/lib/crypto/identity.test.ts).
+	//
+	// seed  = 32 zero bytes -> Ed25519 identity key
+	// nonce = 32 zero bytes
+	// proof = Ed25519(seed, "shatters-auth-v1" || nonce)
+	priv := ed25519.NewKeyFromSeed(make([]byte, 32))
+	pub, ok := priv.Public().(ed25519.PublicKey)
+	if !ok {
+		t.Fatal("unexpected public key type")
+	}
+	nonce := make([]byte, 32)
+
+	const want = "hW2gkIMjzOoTKetCo5bnVDbOqUYwjzyypFyq5orI8I1DyJqN2M4+EsG8dF/W4dDqqF8FCSqnzTSLo8kFpxoyDw=="
+	got := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, append([]byte(domainAuth), nonce...)))
+	if got != want {
+		t.Errorf("auth proof = %q, want %q", got, want)
+	}
+
+	sig, err := base64.StdEncoding.DecodeString(want)
+	if err != nil {
+		t.Fatalf("decode vector: %v", err)
+	}
+	if err := VerifyAuthProof(pub, nonce, sig); err != nil {
+		t.Errorf("golden proof rejected: %v", err)
+	}
+
+	// A proof over the bare nonce - the mistake a client makes when it skips
+	// the domain separator - must not verify.
+	if err := VerifyAuthProof(pub, nonce, ed25519.Sign(priv, nonce)); err == nil {
+		t.Error("proof over undomained nonce accepted")
 	}
 }
 
