@@ -65,8 +65,8 @@ v2 development follows milestone-based git-flow. Current state:
 | Milestone | Scope | State |
 |---|---|---|
 | M0 – Foundation | Monorepo, CI, migrations | ✅ done |
-| M1 – Identities | Registration, prekeys, key directory | 🚧 in progress |
-| M2 – E2EE Sessions | X3DH + Double Ratchet | ⬜ |
+| M1 – Identities | Registration, prekeys, key directory | ✅ done |
+| M2 – E2EE Sessions | X3DH + Double Ratchet | 🚧 in progress |
 | M3 – Transport | Authenticated WebSocket, offline queue | ⬜ |
 | M4 – Encrypted Persistence | Client-side history | ⬜ |
 | M5 – Hardening | Rate limiting, fuzzing, audits | ⬜ |
