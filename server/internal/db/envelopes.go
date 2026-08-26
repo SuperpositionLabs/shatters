@@ -45,24 +45,31 @@ type Envelope struct {
 	ExpiresAt      time.Time
 }
 
+// StoredEnvelope is a freshly queued envelope plus the recipient's internal
+// id, which callers need to route a live push without a second lookup.
+type StoredEnvelope struct {
+	Envelope
+	RecipientID [16]byte
+}
+
 // StoreEnvelope queues a blob for a recipient identified by its opaque public
-// ID, returning the new envelope ID.
+// ID, returning the stored row.
 //
 // senderID comes from the authenticated session rather than the request body,
 // so a client cannot attribute a message to someone else.
-func StoreEnvelope(ctx context.Context, pool *pgxpool.Pool, senderID [16]byte, recipientPublicID string, payload []byte) ([16]byte, error) {
-	var id [16]byte
+func StoreEnvelope(ctx context.Context, pool *pgxpool.Pool, senderPublicID string, senderID [16]byte, recipientPublicID string, payload []byte) (StoredEnvelope, error) {
+	var out StoredEnvelope
 
 	if len(payload) == 0 {
-		return id, fmt.Errorf("db: empty envelope payload")
+		return out, fmt.Errorf("db: empty envelope payload")
 	}
 	if len(payload) > MaxEnvelopeBytes {
-		return id, ErrEnvelopeTooLarge
+		return out, ErrEnvelopeTooLarge
 	}
 
 	tx, err := pool.Begin(ctx)
 	if err != nil {
-		return id, fmt.Errorf("db: begin store envelope: %w", err)
+		return out, fmt.Errorf("db: begin store envelope: %w", err)
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 
@@ -72,9 +79,9 @@ func StoreEnvelope(ctx context.Context, pool *pgxpool.Pool, senderID [16]byte, r
 		recipientPublicID).Scan(&recipient)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return id, ErrNotFound
+			return out, ErrNotFound
 		}
-		return id, fmt.Errorf("db: resolve recipient: %w", err)
+		return out, fmt.Errorf("db: resolve recipient: %w", err)
 	}
 
 	// Only live envelopes count towards the cap: expired rows are already
@@ -84,25 +91,30 @@ func StoreEnvelope(ctx context.Context, pool *pgxpool.Pool, senderID [16]byte, r
 		`SELECT count(*) FROM envelopes
 		 WHERE recipient_id = $1 AND expires_at > now()`,
 		recipient[:]).Scan(&queued); err != nil {
-		return id, fmt.Errorf("db: count queued envelopes: %w", err)
+		return out, fmt.Errorf("db: count queued envelopes: %w", err)
 	}
 	if queued >= MaxQueuedPerRecipient {
-		return id, ErrRecipientQueueFull
+		return out, ErrRecipientQueueFull
 	}
 
 	err = tx.QueryRow(ctx,
 		`INSERT INTO envelopes (sender_id, recipient_id, payload, expires_at)
 		 VALUES ($1, $2, $3, $4)
-		 RETURNING id`,
-		senderID[:], recipient[:], payload, time.Now().Add(EnvelopeTTL)).Scan(&id)
+		 RETURNING id, created_at, expires_at`,
+		senderID[:], recipient[:], payload, time.Now().Add(EnvelopeTTL)).
+		Scan(&out.ID, &out.CreatedAt, &out.ExpiresAt)
 	if err != nil {
-		return id, fmt.Errorf("db: insert envelope: %w", err)
+		return out, fmt.Errorf("db: insert envelope: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return id, fmt.Errorf("db: commit store envelope: %w", err)
+		return out, fmt.Errorf("db: commit store envelope: %w", err)
 	}
-	return id, nil
+
+	out.SenderPublicID = senderPublicID
+	out.Payload = payload
+	out.RecipientID = recipient
+	return out, nil
 }
 
 // FetchEnvelopes returns up to MaxEnvelopesPerFetch undelivered envelopes for

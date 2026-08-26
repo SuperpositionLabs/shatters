@@ -41,9 +41,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	service := api.NewServer(pool)
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           api.NewServer(pool),
+		Handler:           service,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -62,6 +63,11 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	// Close WebSockets first: they are hijacked connections, so Shutdown would
+	// otherwise return while they are still open and leave them to be severed
+	// by process exit.
+	service.Close()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

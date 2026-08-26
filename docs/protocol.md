@@ -172,7 +172,24 @@ Expired envelopes are never served regardless of whether a sweep has run, and ea
 
 > **Deviation from the original draft.** Earlier revisions described ACKs as *client-signed receipts*. As implemented they are authenticated but unsigned: the bearer token already proves who is deleting, and the server is the only party that reads an ACK. A signature would add value only for **delivery receipts relayed back to the sender**, which nothing implements yet — and a receipt the server can show to a sender is a non-repudiable record of who received what, which is metadata this design otherwise avoids creating. If delivery receipts are wanted, they belong end-to-end inside an envelope, not as a server-visible signature.
 
-- Delivery path: WebSocket push to online recipients (M3, later issue); otherwise persisted in the `envelopes` table with a TTL (default 30 days) and pulled on reconnect.
+### Live delivery — `GET /v1/ws`
+
+Connected recipients are pushed to instead of polling. The socket is a **push and acknowledge** channel; sending always goes through `POST /v1/envelopes`, so there is one code path that stores, caps and attributes an envelope.
+
+**Authentication is by first frame, not by header.** Browsers cannot set `Authorization` on a WebSocket handshake, and the two usual workarounds are both worse: a token in the query string lands in proxy access logs, browser history and `Referer` headers, and `Sec-WebSocket-Protocol` is still a handshake header that proxies commonly log. Instead the socket opens unauthenticated and must send `{"type":"auth","token":"..."}` within 10 seconds; anything else closes it. The token then only ever appears in a frame body.
+
+Client frames: `auth`, `ack` (`{envelope_ids}`), `ping`. Server frames: `ready`, `envelope`, `acked`, `pong`, `error`. Unknown client types are ignored rather than fatal, so new frame types do not break older servers.
+
+Operational properties:
+
+- The connection joins the hub **before** `ready` is sent. A client that has seen `ready` may expect pushes, so registering second would silently drop anything sent in that window.
+- An account may hold several connections (devices, tabs); every one receives each push, since the server cannot know which the user is looking at.
+- **A push never deletes.** The row survives until acknowledged, so a push lost in flight is redelivered on the next fetch. Sending therefore never depends on the recipient's connectivity — an offline recipient is not an error.
+- Per-connection send buffers are bounded. A wedged consumer has its socket dropped rather than being allowed to grow server memory: losing a socket is cheap, losing a message is not.
+- Ping/pong keepalive with read and write deadlines; cross-origin handshakes are rejected, since the same-origin policy does not apply to WebSockets and any site could otherwise open an authenticated socket in a visitor's browser.
+- Sockets are hijacked connections, which `http.Server.Shutdown` neither tracks nor waits for, so they are closed explicitly on shutdown.
+
+Recipients who are not connected fall back to the queue above: envelopes persist with a TTL (default 30 days) and are pulled on reconnect.
 - The server cannot read `ciphertext`, learn recipients' contacts beyond routing metadata, or correlate beyond what §10 admits.
 
 ## 10. Metadata policy
