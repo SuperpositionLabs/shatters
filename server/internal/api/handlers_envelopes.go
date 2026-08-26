@@ -79,7 +79,8 @@ func (s *Server) handleSendEnvelope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := db.StoreEnvelope(r.Context(), s.pool, account.ID, req.RecipientID, payload)
+	stored, err := db.StoreEnvelope(r.Context(), s.pool,
+		account.PublicID, account.ID, req.RecipientID, payload)
 	switch {
 	case errors.Is(err, db.ErrNotFound):
 		writeError(w, http.StatusNotFound, "unknown recipient")
@@ -95,8 +96,13 @@ func (s *Server) handleSendEnvelope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The row is committed, so the send has succeeded regardless of whether the
+	// recipient is connected. A push that does not land is picked up by the
+	// recipient's next fetch.
+	s.pushEnvelope(stored.RecipientID, stored.Envelope)
+
 	writeJSON(w, http.StatusCreated, map[string]string{
-		"envelope_id": formatUUID(id),
+		"envelope_id": formatUUID(stored.ID),
 	})
 }
 
