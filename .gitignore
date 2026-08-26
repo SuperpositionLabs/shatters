@@ -4,7 +4,8 @@
 coverage.out
 
 # Node / web client
-web/node_modules/
+node_modules/
+.vite/
 web/.next/
 web/out/
 web/next-env.d.ts
