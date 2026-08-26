@@ -103,6 +103,23 @@ The initial message carries: initiator identity key, ephemeral key, used prekey 
 
 Follows the [Signal Double Ratchet specification](https://signal.org/docs/specifications/doubleratchet/): symmetric-chain and DH ratchets, header `{dh_pub, pn, n}`, skipped-message keys cached with a bounded window (max 2000 keys, max 64 skip chains), deleted immediately on use or replacement.
 
+Concrete constructions:
+
+```
+(RK', CK) = HKDF-SHA256(salt=RK, ikm=DH_out, info="shatters-ratchet-root-v1", 64)
+mk        = HMAC-SHA256(CK, 0x01)
+CK'       = HMAC-SHA256(CK, 0x02)
+key||nonce = HKDF-SHA256(salt=0, ikm=mk, info="shatters-msg-v1", 32+24)
+ciphertext = XChaCha20-Poly1305(key, nonce, plaintext, ad = AD || header)
+header     = dh_pub || pn_be32 || n_be32      (40 bytes)
+```
+
+The per-message nonce is derived from `mk` rather than transmitted: it costs no bytes on the wire and cannot be influenced by an attacker. Reuse is impossible because a message key is produced once by the chain and destroyed on use.
+
+The header is authenticated as part of the AEAD associated data, so a reordered or retargeted header fails the tag instead of decrypting to the wrong plaintext.
+
+A message that fails to authenticate must leave the session state untouched. Acting on an unverified header would let a single forged packet advance the root key and rebuild both chains around a ratchet key the peer never used, permanently desynchronising a live conversation.
+
 Guarantees: forward secrecy, post-compromise security (future secrecy), per-message keys never reused.
 
 Session state serialization (client-local): encrypted with Argon2id-derived key before hitting IndexedDB/localStorage (M2/M4 work).
