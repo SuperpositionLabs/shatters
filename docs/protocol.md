@@ -93,7 +93,9 @@ DH4 = DH(EKa, OPKb)      // when an OPK was fetched
 SK  = HKDF(F || DH1..4, salt=0, info="shatters-x3dh-v1")
 ```
 
-`F` is 32 bytes of `0xFF` (FIPS 186 curve bound, as in Signal). Associated data `AD = IKa_pub || IKb_pub` is fed into the first ratchet message.
+`F` is 32 bytes of `0xFF` (FIPS 186 curve bound, as in Signal). `IKa`/`IKb` in the DH steps are the **X25519** identity keys (§3); `SK` is 32 bytes, HKDF salt is `0x00 * 32`.
+
+Associated data `AD = IKa_pub || IKb_pub` is fed into the first ratchet message, using the **Ed25519** identity keys, initiator first. Signal has a single identity key so the spec need not distinguish; shatters has two, and the Ed25519 key is the one account IDs derive from — binding it ties the session to the two addressable identities rather than to key material the server hands out.
 
 The initial message carries: initiator identity key, ephemeral key, used prekey IDs, and the first ratchet payload — everything inside the envelope ciphertext except the fields the responder needs *before* possessing session state, which ride in a plaintext header block of the inner message (still invisible to the server because the outer envelope is opaque... the server only sees the outer blob).
 
