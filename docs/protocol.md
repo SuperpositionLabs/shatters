@@ -160,8 +160,19 @@ A `type` byte rather than a length-prefixed union keeps parsing total: unknown v
 
 An initiator repeats the type 1 header on every message until it successfully decrypts one from the responder, since until then it cannot know the handshake arrived.
 
-- Delivery path (M3): WebSocket push to online recipients; otherwise persisted in the `envelopes` table with a TTL (default 30 days) and pulled on reconnect.
-- ACKs are client-signed receipts confirming retrieval; the server deletes envelopes upon confirmed delivery.
+### Offline queue endpoints (all authenticated)
+
+- `POST /v1/envelopes` — `{recipient_id, payload}`; the payload is base64 and opaque. The server decodes it only to enforce the 64 KiB cap and never inspects the bytes. The sender is taken from the session, never from the request, so a message cannot be attributed to someone else.
+- `GET /v1/envelopes` — returns up to 100 queued envelopes for the **caller**, oldest first. There is no parameter naming a recipient; scoping comes from the bearer token alone.
+- `POST /v1/envelopes/ack` — `{envelope_ids}`; deletes them and reports how many were removed.
+
+Fetching deliberately does **not** delete. A client that dies mid-transfer must see its envelopes again rather than lose them, so fetch is idempotent until acknowledged, and acknowledging is idempotent in turn. Acknowledgement is scoped to the caller's own account: an id belonging to someone else matches nothing, so a caller cannot delete another account's mail or learn that the id exists.
+
+Expired envelopes are never served regardless of whether a sweep has run, and each recipient's queue is capped at 10 000 live envelopes so an unreachable account cannot be used to exhaust storage.
+
+> **Deviation from the original draft.** Earlier revisions described ACKs as *client-signed receipts*. As implemented they are authenticated but unsigned: the bearer token already proves who is deleting, and the server is the only party that reads an ACK. A signature would add value only for **delivery receipts relayed back to the sender**, which nothing implements yet — and a receipt the server can show to a sender is a non-repudiable record of who received what, which is metadata this design otherwise avoids creating. If delivery receipts are wanted, they belong end-to-end inside an envelope, not as a server-visible signature.
+
+- Delivery path: WebSocket push to online recipients (M3, later issue); otherwise persisted in the `envelopes` table with a TTL (default 30 days) and pulled on reconnect.
 - The server cannot read `ciphertext`, learn recipients' contacts beyond routing metadata, or correlate beyond what §10 admits.
 
 ## 10. Metadata policy

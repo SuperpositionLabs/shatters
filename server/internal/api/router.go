@@ -61,6 +61,12 @@ func NewServer(pool *pgxpool.Pool, opts ...Option) http.Handler {
 		})
 		r.Post("/v1/accounts/me/prekeys", s.handleUploadPrekeys)
 		r.Get("/v1/accounts/{accountID}/bundle", s.handleGetBundle)
+
+		// Offline delivery (protocol §9). Recipient scoping always comes from
+		// the bearer token, never from a request field.
+		r.Post("/v1/envelopes", s.handleSendEnvelope)
+		r.Get("/v1/envelopes", s.handleFetchEnvelopes)
+		r.Post("/v1/envelopes/ack", s.handleAckEnvelopes)
 	})
 
 	return r
