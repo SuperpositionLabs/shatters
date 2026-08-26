@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   accountId,
+  authProofMessage,
+  createAuthProof,
   createSignedPrekey,
   generateIdentity,
   toBase64Url,
@@ -68,6 +70,44 @@ describe("identity", () => {
     expect(
       s.crypto_sign_verify_detached(spk.signature, msg, identity.signing.publicKey),
     ).toBe(false);
+  });
+
+  it("creates auth proofs the server accepts", async () => {
+    const { sodium } = await import("./identity");
+    const s = await sodium();
+    const identity = await generateIdentity();
+    const nonce = s.randombytes_buf(32);
+
+    const proof = await createAuthProof(identity.signing.privateKey, nonce);
+
+    // Valid over the domained message...
+    expect(
+      s.crypto_sign_verify_detached(
+        proof,
+        authProofMessage(nonce),
+        identity.signing.publicKey,
+      ),
+    ).toBe(true);
+
+    // ...and specifically NOT a signature over the bare nonce, which is what
+    // the server rejects with 401.
+    expect(
+      s.crypto_sign_verify_detached(proof, nonce, identity.signing.publicKey),
+    ).toBe(false);
+  });
+
+  it("matches the Go auth-proof reference vector", async () => {
+    // Golden vector from server/internal/crypto/auth_test.go:
+    // Ed25519(seed=0x00*32, "shatters-auth-v1" || 0x00*32).
+    const { sodium } = await import("./identity");
+    const s = await sodium();
+    const { privateKey } = s.crypto_sign_seed_keypair(new Uint8Array(32));
+
+    const proof = await createAuthProof(privateKey, new Uint8Array(32));
+
+    const expected =
+      "hW2gkIMjzOoTKetCo5bnVDbOqUYwjzyypFyq5orI8I1DyJqN2M4+EsG8dF/W4dDqqF8FCSqnzTSLo8kFpxoyDw==";
+    expect(s.to_base64(proof, s.base64_variants.ORIGINAL)).toBe(expected);
   });
 
   it("encodes base64url without padding", () => {

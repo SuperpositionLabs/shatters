@@ -12,6 +12,7 @@ import _sodium from "libsodium-wrappers-sumo";
 
 export const ACCOUNT_DOMAIN = "shatters-account-v1";
 export const SIGNED_PREKEY_DOMAIN = "shatters-spk-v1";
+export const AUTH_DOMAIN = "shatters-auth-v1";
 
 type Sodium = typeof _sodium;
 
@@ -90,6 +91,36 @@ export async function signDetached(
 ): Promise<Uint8Array> {
   const s = await sodium();
   return s.crypto_sign_detached(message, privateKey);
+}
+
+/**
+ * Builds the exact byte string the server verifies an auth proof over:
+ *   "shatters-auth-v1" || nonce
+ *
+ * Exported so tests can pin the construction; callers should prefer
+ * `createAuthProof`.
+ */
+export function authProofMessage(nonce: Uint8Array): Uint8Array {
+  const domain = new TextEncoder().encode(AUTH_DOMAIN);
+  const message = new Uint8Array(domain.length + nonce.length);
+  message.set(domain);
+  message.set(nonce, domain.length);
+  return message;
+}
+
+/**
+ * Answers a `POST /v1/auth/challenge` nonce with a detached Ed25519 proof.
+ *
+ * The domain separator is what keeps an auth proof from being replayable as
+ * a signed prekey (or vice versa): every signature this identity produces is
+ * bound to the purpose it was made for. Must match the Go verification in
+ * `crypto.VerifyAuthProof`.
+ */
+export async function createAuthProof(
+  signingPrivateKey: Uint8Array,
+  nonce: Uint8Array,
+): Promise<Uint8Array> {
+  return signDetached(signingPrivateKey, authProofMessage(nonce));
 }
 
 export interface SignedPrekey {
