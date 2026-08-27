@@ -61,10 +61,18 @@ Then:
 | `RATE_LIMIT_BURST` | `20` | Per-IP burst allowance |
 | `CORS_ALLOWED_ORIGINS` | *(none)* | Comma-separated browser origins allowed to call from elsewhere |
 | `SWEEP_INTERVAL` | `1h` | How often expired rows are deleted; `0` disables the sweeper |
+| `TRUSTED_PROXIES` | `0` | Reverse proxy hops in front; needed for correct per-IP rate limiting |
 
 Rate limiting is per-IP and in-memory only — no user is tracked. An invalid or
 non-positive limit refuses to start rather than falling back to a default, so a
 typo cannot silently leave the endpoints unprotected.
+
+`TRUSTED_PROXIES` matters whenever the server is not directly exposed. Behind a
+reverse proxy every request arrives from the proxy, so without it all users
+share one rate-limit bucket and throttle each other. Set it to the number of
+hops in front — the bundled production stack sets `1` for Caddy. It defaults to
+`0` because the opposite mistake is worse: trusting `X-Forwarded-For` on a
+directly reachable server lets anyone pick their own address.
 
 `CORS_ALLOWED_ORIGINS` is empty by default, meaning **same-origin only** — the
 normal deployment puts client and server behind one reverse proxy. Set it only

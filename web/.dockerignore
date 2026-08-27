@@ -1,0 +1,7 @@
+# Everything the image builds for itself. Sending these wastes context and
+# risks a host-built artefact leaking into the image.
+node_modules
+.next
+out
+.env
+.env.*

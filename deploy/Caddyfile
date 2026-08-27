@@ -1,0 +1,43 @@
+# TLS terminates here. Certificates are obtained and renewed automatically.
+#
+# Client and API share one origin, which is what keeps CORS_ALLOWED_ORIGINS
+# empty and lets the WebSocket pass its same-origin check unconfigured.
+# Global options. `email` belongs here rather than inside the site block.
+{
+	email {$TLS_EMAIL}
+}
+
+{$SHATTERS_DOMAIN} {
+	encode zstd gzip
+
+	# The API. /v1/ws is a WebSocket; Caddy proxies the upgrade as-is, so no
+	# special handling is needed beyond routing it to the same backend.
+	handle /v1/* {
+		reverse_proxy server:8080
+	}
+
+	handle /healthz {
+		reverse_proxy server:8080
+	}
+
+	# Everything else is the client.
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		# HSTS. The whole design assumes TLS; a downgraded connection exposes
+		# the session token in the socket's first frame.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		# The client executes only its own bundle and talks only to its own
+		# origin. Anything else loading or connecting is not something this
+		# application does.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+		# Nothing here needs a camera, a microphone or a location.
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
