@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("PORT", "")
@@ -144,6 +147,48 @@ func TestLoadRejectsBadOrigins(t *testing.T) {
 
 			if _, err := Load(); err == nil {
 				t.Errorf("Load(CORS_ALLOWED_ORIGINS=%q) error = nil, want error", value)
+			}
+		})
+	}
+}
+
+func TestLoadParsesSweepInterval(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("SWEEP_INTERVAL", "15m")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.SweepInterval != 15*time.Minute {
+		t.Errorf("SweepInterval = %s, want 15m", cfg.SweepInterval)
+	}
+}
+
+func TestLoadAcceptsZeroSweepInterval(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("SWEEP_INTERVAL", "0")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	// Meaningful rather than invalid: it hands housekeeping to the operator.
+	if cfg.SweepInterval != 0 {
+		t.Errorf("SweepInterval = %s, want 0", cfg.SweepInterval)
+	}
+}
+
+func TestLoadRejectsBadSweepInterval(t *testing.T) {
+	for _, value := range []string{"soon", "-5m"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://localhost/test")
+			t.Setenv("SWEEP_INTERVAL", value)
+
+			// A negative interval can only be a mistake, and silently
+			// disabling housekeeping is the wrong way to handle one.
+			if _, err := Load(); err == nil {
+				t.Errorf("Load(SWEEP_INTERVAL=%q) error = nil, want error", value)
 			}
 		})
 	}

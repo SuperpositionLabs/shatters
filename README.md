@@ -60,6 +60,7 @@ Then:
 | `RATE_LIMIT_PER_MINUTE` | `60` | Sustained per-IP rate on unauthenticated endpoints |
 | `RATE_LIMIT_BURST` | `20` | Per-IP burst allowance |
 | `CORS_ALLOWED_ORIGINS` | *(none)* | Comma-separated browser origins allowed to call from elsewhere |
+| `SWEEP_INTERVAL` | `1h` | How often expired rows are deleted; `0` disables the sweeper |
 
 Rate limiting is per-IP and in-memory only — no user is tracked. An invalid or
 non-positive limit refuses to start rather than falling back to a default, so a
@@ -70,6 +71,12 @@ normal deployment puts client and server behind one reverse proxy. Set it only
 when the client is served from somewhere else (a CDN, or `next dev` on port
 3000). Origins are matched exactly, scheme and port included; `*` is rejected
 at startup rather than honoured. The WebSocket handshake reads the same list.
+
+The sweeper deletes expired envelopes, unanswered authentication challenges
+and lapsed session tokens. Expired rows are already invisible to readers, so
+this is not about correctness — it is about not keeping data the design
+promised to discard. Set `SWEEP_INTERVAL=0` if you would rather run the
+deletes from your own cron.
 
 For local development against `next dev`, point the client at the API and
 allow its origin:
