@@ -88,6 +88,7 @@ export default function Home() {
           typing={state.typing}
           onOpen={(id) => void actions.openConversation(id)}
           onStart={(id, name) => void actions.startConversation(id, name)}
+          onCreateGroup={(name, members) => void actions.createGroup(name, members)}
           onDelete={(id) => void actions.deleteConversation(id)}
         />
         {state.accountId && (
@@ -105,6 +106,7 @@ export default function Home() {
           messages={state.messages}
           peerTyping={state.activeId ? state.typing.has(state.activeId) : false}
           onBack={actions.closeConversation}
+          onLeaveGroup={(id) => void actions.leaveGroup(id)}
           onSend={(body) => void actions.sendText(body)}
           onAttach={(file) => void actions.sendAttachment(file)}
           onTyping={() => void actions.notifyTyping()}

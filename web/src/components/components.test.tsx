@@ -127,6 +127,7 @@ describe("ConversationList", () => {
         typing={new Set()}
         onOpen={noop}
         onStart={noop}
+        onCreateGroup={noop}
         onDelete={noop}
       />,
     );
@@ -144,6 +145,7 @@ describe("ConversationList", () => {
         typing={new Set([conversations[0].id])}
         onOpen={noop}
         onStart={noop}
+        onCreateGroup={noop}
         onDelete={noop}
       />,
     );
@@ -161,6 +163,7 @@ describe("ConversationList", () => {
         typing={new Set()}
         onOpen={noop}
         onStart={onStart}
+        onCreateGroup={noop}
         onDelete={noop}
       />,
     );
@@ -183,6 +186,7 @@ describe("ConversationList", () => {
         typing={new Set()}
         onOpen={noop}
         onStart={onStart}
+        onCreateGroup={noop}
         onDelete={noop}
       />,
     );
@@ -209,6 +213,7 @@ describe("ConversationList", () => {
         typing={new Set()}
         onOpen={noop}
         onStart={noop}
+        onCreateGroup={noop}
         onDelete={noop}
       />,
     );

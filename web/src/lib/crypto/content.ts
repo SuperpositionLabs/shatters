@@ -82,6 +82,40 @@ export interface AttachmentChunkContent {
   caption?: string;
 }
 
+/** Announces a group and its initial membership to each member. */
+export interface GroupCreateContent {
+  type: "group-create";
+  groupId: string;
+  name: string;
+  members: string[];
+  timestamp: number;
+}
+
+/**
+ * A membership or name change.
+ *
+ * Carries the whole change rather than a delta from a sequence number: there
+ * is no server to order changes, so each must stand on its own.
+ */
+export interface GroupUpdateContent {
+  type: "group-update";
+  groupId: string;
+  name?: string;
+  addMembers?: string[];
+  removeMembers?: string[];
+  timestamp: number;
+}
+
+/** A message addressed to a group rather than to one peer. */
+export interface GroupTextContent {
+  type: "group-text";
+  groupId: string;
+  id: string;
+  body: string;
+  timestamp: number;
+  replyTo?: string;
+}
+
 /**
  * A content type this client does not understand.
  *
@@ -101,6 +135,9 @@ export type MessageContent =
   | EditContent
   | ReactionContent
   | AttachmentChunkContent
+  | GroupCreateContent
+  | GroupUpdateContent
+  | GroupTextContent
   | UnsupportedContent;
 
 interface Framed {
@@ -116,6 +153,9 @@ const KNOWN_TYPES = new Set([
   "edit",
   "reaction",
   "attachment",
+  "group-create",
+  "group-update",
+  "group-text",
 ]);
 
 /** Serialises content for the ratchet to seal. */
@@ -225,6 +265,30 @@ function validate(content: MessageContent): void {
       );
       require(typeof content.data === "string", "data");
       require(Number.isInteger(content.size) && content.size >= 0, "size");
+      break;
+
+    case "group-create":
+      require(typeof content.groupId === "string" && content.groupId.length > 0, "groupId");
+      require(typeof content.name === "string", "name");
+      require(Array.isArray(content.members), "members");
+      break;
+
+    case "group-update":
+      require(typeof content.groupId === "string" && content.groupId.length > 0, "groupId");
+      require(Number.isFinite(content.timestamp), "timestamp");
+      require(
+        content.name !== undefined ||
+          (content.addMembers?.length ?? 0) > 0 ||
+          (content.removeMembers?.length ?? 0) > 0,
+        "change",
+      );
+      break;
+
+    case "group-text":
+      require(typeof content.groupId === "string" && content.groupId.length > 0, "groupId");
+      require(typeof content.id === "string" && content.id.length > 0, "id");
+      require(typeof content.body === "string", "body");
+      require(Number.isFinite(content.timestamp), "timestamp");
       break;
 
     default:

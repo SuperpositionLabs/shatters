@@ -12,6 +12,7 @@ interface Props {
   messages: StoredMessage[];
   peerTyping: boolean;
   onBack: () => void;
+  onLeaveGroup?: (id: string) => void;
   onSend: (body: string) => void;
   onAttach: (file: File) => void;
   onTyping: () => void;
@@ -26,6 +27,7 @@ export function ChatView({
   messages,
   peerTyping,
   onBack,
+  onLeaveGroup,
   onSend,
   onAttach,
   onTyping,
@@ -69,15 +71,26 @@ export function ChatView({
             {conversation.displayName ?? shortAccountId(conversation.id)}
           </h2>
           <p className="chat__id" title={conversation.id}>
-            {shortAccountId(conversation.id)}
+            {conversation.isGroup ? "Group" : shortAccountId(conversation.id)}
           </p>
         </div>
+        {conversation.isGroup && onLeaveGroup && (
+          <button
+            type="button"
+            className="button button--ghost chat__leave"
+            onClick={() => onLeaveGroup(conversation.id)}
+          >
+            Leave
+          </button>
+        )}
       </header>
 
       <div className="chat__scroll">
         {messages.length === 0 && (
           <p className="chat__placeholder">
             No messages yet. Everything you send here is end-to-end encrypted.
+            {conversation.isGroup &&
+              " Group messages are encrypted separately for each member."}
           </p>
         )}
 
@@ -90,6 +103,11 @@ export function ChatView({
               <MessageBubble
                 key={message.id}
                 message={message}
+                senderLabel={
+                  conversation.isGroup && message.senderId
+                    ? shortAccountId(message.senderId)
+                    : undefined
+                }
                 onRetry={onRetry}
                 onDelete={onDelete}
                 onEdit={onEdit}

@@ -33,6 +33,15 @@ import {
 } from "../crypto/session";
 import type { ApiClient } from "../transport/api";
 import type { DeliveredEnvelope, Transport } from "../transport/socket";
+import {
+  type GroupState,
+  applyMembershipChange,
+  applyRename,
+  createGroup,
+  currentMembers,
+  isMember,
+  nextTimestamp,
+} from "../group/state";
 import type { ChatStore, StoredIdentity } from "../store/chat";
 import type { Conversation, StoredMessage } from "../store/types";
 
@@ -546,6 +555,211 @@ export class ChatClient {
     return message;
   }
 
+  // --- groups -------------------------------------------------------------
+
+  /**
+   * Creates a group and tells every member about it.
+   *
+   * Delivery is pairwise: one envelope per member, over the session that
+   * already exists with each. That costs O(members) envelopes per message,
+   * which is the price of keeping the ratchet. A shared sender key would be
+   * cheaper but would give up per-recipient forward secrecy.
+   */
+  async createGroupConversation(
+    name: string,
+    members: string[],
+  ): Promise<GroupState> {
+    // Random, never derived from the membership: an id computed from who is in
+    // the group would leak exactly that to anyone who saw it.
+    const groupId = `g-${this.newId()}`;
+    const timestamp = this.now();
+
+    const state = createGroup(groupId, name, this.accountId, members, timestamp);
+    await this.store.saveGroup(state);
+    await this.store.upsertConversation(groupId, {
+      displayName: name,
+      isGroup: true,
+      lastActivity: timestamp,
+    });
+
+    await this.fanOut(state, {
+      type: "group-create",
+      groupId,
+      name,
+      members: currentMembers(state),
+      timestamp,
+    });
+
+    this.events.onConversationsChanged?.();
+    return state;
+  }
+
+  /** Adds or removes members, or renames, and distributes the change. */
+  async updateGroup(
+    groupId: string,
+    change: { name?: string; add?: string[]; remove?: string[] },
+  ): Promise<GroupState> {
+    const state = await this.requireGroup(groupId);
+    // Stamped past everything this member has already seen, so the change
+    // cannot silently lose to older state on a device with a faster clock.
+    const timestamp = nextTimestamp(state, this.now());
+
+    let updated = state;
+    for (const accountId of change.add ?? []) {
+      updated = applyMembershipChange(updated, {
+        accountId,
+        added: true,
+        timestamp,
+        by: this.accountId,
+      });
+    }
+    for (const accountId of change.remove ?? []) {
+      updated = applyMembershipChange(updated, {
+        accountId,
+        added: false,
+        timestamp,
+        by: this.accountId,
+      });
+    }
+    if (change.name !== undefined) {
+      updated = applyRename(updated, change.name, timestamp, this.accountId);
+    }
+
+    await this.store.saveGroup(updated);
+    await this.store.upsertConversation(groupId, {
+      displayName: updated.name,
+      isGroup: true,
+    });
+
+    // Removed members are told too, so they stop delivering locally rather
+    // than waiting to notice the silence.
+    const audience = new Set([
+      ...currentMembers(updated),
+      ...(change.remove ?? []),
+    ]);
+    await this.fanOut(
+      updated,
+      {
+        type: "group-update",
+        groupId,
+        name: change.name,
+        addMembers: change.add,
+        removeMembers: change.remove,
+        timestamp,
+      },
+      audience,
+    );
+
+    this.events.onConversationsChanged?.();
+    return updated;
+  }
+
+  /** Sends a message to every current member. */
+  async sendGroupText(groupId: string, body: string): Promise<StoredMessage> {
+    const state = await this.requireGroup(groupId);
+
+    const message: StoredMessage = {
+      id: this.newId(),
+      conversationId: groupId,
+      direction: "outgoing",
+      body,
+      timestamp: this.now(),
+      status: "pending",
+      senderId: this.accountId,
+    };
+
+    await this.store.appendMessage(message);
+    this.events.onConversationChanged?.(groupId);
+
+    try {
+      await this.fanOut(state, {
+        type: "group-text",
+        groupId,
+        id: message.id,
+        body,
+        timestamp: message.timestamp,
+      });
+      await this.store.setMessageStatus(groupId, message.id, "sent");
+      return { ...message, status: "sent" };
+    } catch (error) {
+      await this.store.setMessageStatus(groupId, message.id, "failed");
+      this.events.onError?.(error);
+      return { ...message, status: "failed" };
+    } finally {
+      this.events.onConversationChanged?.(groupId);
+    }
+  }
+
+  /** Leaves a group and stops delivering to it locally. */
+  async leaveGroup(groupId: string): Promise<void> {
+    const state = await this.requireGroup(groupId);
+    const timestamp = nextTimestamp(state, this.now());
+
+    await this.fanOut(state, {
+      type: "group-update",
+      groupId,
+      removeMembers: [this.accountId],
+      timestamp,
+    }).catch((error) => this.events.onError?.(error));
+
+    // Removed locally regardless of whether the announcement landed: staying
+    // in a group the user left is worse than the others not yet knowing.
+    await this.store.saveGroup(
+      applyMembershipChange(state, {
+        accountId: this.accountId,
+        added: false,
+        timestamp,
+        by: this.accountId,
+      }),
+    );
+    this.events.onConversationsChanged?.();
+  }
+
+  async group(groupId: string): Promise<GroupState | undefined> {
+    return this.store.loadGroup(groupId);
+  }
+
+  private async requireGroup(groupId: string): Promise<GroupState> {
+    const state = await this.store.loadGroup(groupId);
+    if (!state) throw new ChatClientError(`unknown group ${groupId}`);
+    if (!isMember(state, this.accountId)) {
+      throw new ChatClientError(`not a member of ${groupId}`);
+    }
+    return state;
+  }
+
+  /**
+   * Delivers content to each member individually.
+   *
+   * One failure must not stop the rest: a member whose session cannot be
+   * established should not silence the group for everyone else.
+   */
+  private async fanOut(
+    state: GroupState,
+    content: MessageContent,
+    audience?: Set<string>,
+  ): Promise<void> {
+    const recipients = [...(audience ?? new Set(currentMembers(state)))].filter(
+      (id) => id !== this.accountId,
+    );
+
+    const failures: unknown[] = [];
+    for (const recipient of recipients) {
+      try {
+        await this.sendContent(recipient, content);
+      } catch (error) {
+        failures.push(error);
+        this.events.onError?.(error);
+      }
+    }
+
+    if (recipients.length > 0 && failures.length === recipients.length) {
+      // Nothing got through at all, which the caller must be able to report as
+      // a failed send rather than a delivered one.
+      throw failures[0];
+    }
+  }
+
   // --- receiving ----------------------------------------------------------
 
   /**
@@ -664,6 +878,102 @@ export class ChatClient {
       case "attachment":
         await this.applyAttachmentChunk(conversationId, content, envelope);
         break;
+
+      case "group-create": {
+        const state = createGroup(
+          content.groupId,
+          content.name,
+          conversationId,
+          content.members,
+          content.timestamp,
+        );
+        await this.store.saveGroup(state);
+        await this.store.upsertConversation(content.groupId, {
+          displayName: content.name,
+          isGroup: true,
+          lastActivity: content.timestamp,
+        });
+        this.events.onConversationsChanged?.();
+        break;
+      }
+
+      case "group-update": {
+        const existing = await this.store.loadGroup(content.groupId);
+        if (!existing) break;
+        // Only a current member may change the group. Without this, anyone who
+        // learned the id could add themselves to it.
+        if (!isMember(existing, conversationId)) {
+          this.events.onError?.(
+            new ChatClientError(
+              `${conversationId} is not a member of ${content.groupId}`,
+            ),
+          );
+          break;
+        }
+
+        let updated = existing;
+        for (const accountId of content.addMembers ?? []) {
+          updated = applyMembershipChange(updated, {
+            accountId,
+            added: true,
+            timestamp: content.timestamp,
+            by: conversationId,
+          });
+        }
+        for (const accountId of content.removeMembers ?? []) {
+          updated = applyMembershipChange(updated, {
+            accountId,
+            added: false,
+            timestamp: content.timestamp,
+            by: conversationId,
+          });
+        }
+        if (content.name !== undefined) {
+          updated = applyRename(
+            updated,
+            content.name,
+            content.timestamp,
+            conversationId,
+          );
+        }
+
+        await this.store.saveGroup(updated);
+        await this.store.upsertConversation(content.groupId, {
+          displayName: updated.name,
+          isGroup: true,
+        });
+        this.events.onConversationsChanged?.();
+        break;
+      }
+
+      case "group-text": {
+        const state = await this.store.loadGroup(content.groupId);
+        // A sender who is not a member in this device view is ignored: a
+        // message must not enter a group on its own say-so.
+        if (!state || !isMember(state, conversationId)) {
+          this.events.onError?.(
+            new ChatClientError(
+              `rejected a group message from ${conversationId}`,
+            ),
+          );
+          break;
+        }
+
+        await this.store.appendMessage({
+          id: content.id,
+          conversationId: content.groupId,
+          direction: "incoming",
+          body: content.body,
+          timestamp: content.timestamp,
+          status: "delivered",
+          envelopeId: envelope.id,
+          senderId: conversationId,
+        });
+        await this.store.incrementUnread(content.groupId);
+        this.events.onConversationChanged?.(content.groupId);
+        this.events.onConversationsChanged?.();
+        break;
+      }
 
       case "unsupported":
         // A peer speaking a dialect this build does not know. Ignoring is the
