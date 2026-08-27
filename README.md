@@ -51,6 +51,19 @@ Then:
 - API: http://localhost:8080/healthz
 - PostgreSQL: localhost:5432 (`shatters` / `shatters-dev`, dev-only credentials)
 
+### Server configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `8080` | TCP port to listen on |
+| `DATABASE_URL` | — | PostgreSQL connection string (required) |
+| `RATE_LIMIT_PER_MINUTE` | `60` | Sustained per-IP rate on unauthenticated endpoints |
+| `RATE_LIMIT_BURST` | `20` | Per-IP burst allowance |
+
+Rate limiting is per-IP and in-memory only — no user is tracked. An invalid or
+non-positive limit refuses to start rather than falling back to a default, so a
+typo cannot silently leave the endpoints unprotected.
+
 Run the server test suite:
 
 ```sh

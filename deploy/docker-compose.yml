@@ -22,6 +22,10 @@ services:
     environment:
       PORT: "8080"
       DATABASE_URL: postgres://shatters:shatters-dev@db:5432/shatters?sslmode=disable
+      # Per-IP allowance on the unauthenticated endpoints. Defaults to 60/20
+      # when unset; raise it for a busy instance, lower it for a private one.
+      RATE_LIMIT_PER_MINUTE: "60"
+      RATE_LIMIT_BURST: "20"
     ports:
       - "8080:8080"
     depends_on:
