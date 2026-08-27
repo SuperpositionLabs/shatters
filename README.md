@@ -33,11 +33,22 @@ Read more in [`docs/protocol.md`](docs/protocol.md) and
 ```
 ├── server/     Go backend (chi + gorilla/websocket + PostgreSQL)
 ├── web/        Next.js client — all E2EE happens here
-├── deploy/     Docker Compose for local development
+├── deploy/     Docker Compose: development and production stacks
 └── docs/       Protocol specification and threat model
 ```
 
-## Quick start
+## Hosting it
+
+For a real instance on a server, see **[`docs/deployment.md`](docs/deployment.md)** —
+a VPS from nothing to working, with TLS, in about ten minutes:
+
+```sh
+cd deploy
+cp .env.example .env      # set your domain, e-mail and a generated password
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+## Local development
 
 Prerequisites: Docker (or Go 1.25+ / Node 22+ for manual runs).
 
@@ -50,6 +61,9 @@ Then:
 
 - API: http://localhost:8080/healthz
 - PostgreSQL: localhost:5432 (`shatters` / `shatters-dev`, dev-only credentials)
+
+This stack is for a laptop. It has no TLS, publishes the database, and uses a
+known password; do not put it on a server.
 
 ### Server configuration
 
