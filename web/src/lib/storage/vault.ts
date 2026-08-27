@@ -15,8 +15,14 @@ import { type StorageAdapter, defaultAdapter } from "./adapter";
 const PARAMS_KEY = "vault:params";
 /** Prefix for sealed records, so `keys()` can enumerate them. */
 const RECORD_PREFIX = "vault:record:";
-/** Canary record proving a passphrase is right before anything else is read. */
-const CANARY_KEY = `${RECORD_PREFIX}__canary__`;
+/**
+ * Canary record proving a passphrase is right before anything else is read.
+ *
+ * A record *name*, not a storage key: `put` adds the prefix. Spelling it with
+ * the prefix here double-prefixed the stored key, which still round-tripped -
+ * read and write shared the mistake - but leaked the canary into `list()`.
+ */
+const CANARY_NAME = "__canary__";
 const CANARY_PLAINTEXT = "shatters-vault-v1";
 
 const KEY_LENGTH = 32;
@@ -100,7 +106,7 @@ export class Vault {
       new TextEncoder().encode(JSON.stringify(params)),
     );
     // Written last: a canary present means the parameters are usable.
-    await vault.putString(CANARY_KEY, CANARY_PLAINTEXT);
+    await vault.putString(CANARY_NAME, CANARY_PLAINTEXT);
     return vault;
   }
 
@@ -131,7 +137,7 @@ export class Vault {
     const vault = new Vault(adapter, params);
     vault.key = await deriveKey(passphrase, params);
 
-    const canary = await vault.getString(CANARY_KEY).catch(() => undefined);
+    const canary = await vault.getString(CANARY_NAME).catch(() => undefined);
     if (canary !== CANARY_PLAINTEXT) {
       vault.lock();
       throw new VaultError("incorrect passphrase");
@@ -236,7 +242,7 @@ export class Vault {
     const keys = await this.adapter.keys(RECORD_PREFIX + prefix);
     return keys
       .map((k) => k.slice(RECORD_PREFIX.length))
-      .filter((name) => name !== "__canary__");
+      .filter((name) => name !== CANARY_NAME);
   }
 
   /** Destroys every record and the parameters, leaving no recoverable data. */

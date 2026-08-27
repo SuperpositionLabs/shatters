@@ -5,8 +5,11 @@ import { type FormEvent, useState } from "react";
 interface Props {
   mode: "onboarding" | "unlocking";
   error?: string;
+  /** The error can be escaped by destroying the vault and starting over. */
+  recoverable?: boolean;
   onCreate: (passphrase: string) => Promise<void>;
   onUnlock: (passphrase: string) => Promise<void>;
+  onReset?: () => Promise<void>;
 }
 
 /** Shortest passphrase accepted when creating a vault. */
@@ -18,10 +21,18 @@ export const MIN_PASSPHRASE_LENGTH = 10;
  * The passphrase is the only thing between a stolen device and the entire
  * history, so this is not a setting tucked away somewhere - it is the door.
  */
-export function UnlockScreen({ mode, error, onCreate, onUnlock }: Props) {
+export function UnlockScreen({
+  mode,
+  error,
+  recoverable,
+  onCreate,
+  onUnlock,
+  onReset,
+}: Props) {
   const [passphrase, setPassphrase] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const [localError, setLocalError] = useState<string>();
 
   const creating = mode === "onboarding";
@@ -96,6 +107,45 @@ export function UnlockScreen({ mode, error, onCreate, onUnlock }: Props) {
             <p className="alert" role="alert">
               {message}
             </p>
+          )}
+
+          {recoverable && onReset && !confirmingReset && (
+            // Without a way out, this state is a dead end escapable only by
+            // clearing site data, which nothing tells the user to do.
+            <button
+              type="button"
+              className="button button--ghost"
+              onClick={() => setConfirmingReset(true)}
+            >
+              Start over
+            </button>
+          )}
+
+          {recoverable && onReset && confirmingReset && (
+            <div className="unlock__confirm">
+              {/* Destructive and irreversible, so it is stated plainly and
+                  requires a second, deliberate action. */}
+              <p className="unlock__warning">
+                This permanently deletes everything stored on this device,
+                including any message history. It cannot be undone.
+              </p>
+              <div className="unlock__confirmrow">
+                <button
+                  type="button"
+                  className="button button--danger"
+                  onClick={() => void onReset()}
+                >
+                  Delete and start over
+                </button>
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={() => setConfirmingReset(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
 
           <button type="submit" className="button button--primary" disabled={busy}>

@@ -29,6 +29,8 @@ export interface ChatState {
   typing: Set<string>;
   connection: "offline" | "connecting" | "online";
   error?: string;
+  /** The current error can be escaped by destroying the vault and starting over. */
+  recoverable?: boolean;
 }
 
 /** Server origin. Same-origin by default, which is how it is deployed. */
@@ -49,6 +51,11 @@ export function useChat() {
   const clientRef = useRef<ChatClient>(undefined);
   const transportRef = useRef<Transport>(undefined);
   const activeRef = useRef<string | undefined>(undefined);
+  /**
+   * Held only between a successful unlock and a possible reset, so the vault
+   * can be destroyed properly rather than by clearing the whole store.
+   */
+  const pendingPassphrase = useRef<string | undefined>(undefined);
   /** Timers that clear a typing indicator when its TTL runs out. */
   const typingTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
@@ -175,11 +182,18 @@ export function useChat() {
   const createAccount = useCallback(
     async (passphrase: string) => {
       patch({ error: undefined });
+
+      let vault: Vault | undefined;
       try {
-        const vault = await Vault.create(passphrase, { adapter: defaultAdapter() });
+        vault = await Vault.create(passphrase, { adapter: defaultAdapter() });
         await boot(vault, "register");
       } catch (error) {
-        patch({ error: describe(error) });
+        // Registration can fail after the vault exists - an unreachable server
+        // is the common case. Leaving it behind strands the user: the app
+        // would offer Unlock forever on a vault with no account in it. It
+        // holds nothing yet, so removing it costs nothing.
+        await vault?.destroy().catch(() => undefined);
+        patch({ phase: "onboarding", error: describe(error) });
       }
     },
     [boot, patch],
@@ -187,16 +201,51 @@ export function useChat() {
 
   const unlock = useCallback(
     async (passphrase: string) => {
-      patch({ error: undefined });
+      patch({ error: undefined, recoverable: false });
       try {
         const vault = await Vault.unlock(passphrase, defaultAdapter());
+        pendingPassphrase.current = passphrase;
         await boot(vault, "resume");
       } catch (error) {
-        patch({ error: describe(error) });
+        // A vault that opened but holds no account is recoverable only by
+        // starting over, so the UI needs to know to offer that.
+        const recoverable = error instanceof NoAccountError;
+        if (!recoverable) pendingPassphrase.current = undefined;
+        patch({ error: describe(error), recoverable });
       }
     },
     [boot, patch],
   );
+
+  /**
+   * Destroys the local vault and starts over.
+   *
+   * Deliberately explicit and confirmed by the caller: silently wiping a vault
+   * that might hold real history would be far worse than the dead end this
+   * exists to escape.
+   */
+  const resetVault = useCallback(async () => {
+    try {
+      const vault = await Vault.unlock(pendingPassphrase.current ?? "", defaultAdapter())
+        .catch(() => undefined);
+      if (vault) {
+        await vault.destroy();
+      } else {
+        // Cannot open it, so remove the whole store rather than leave a vault
+        // nobody can get into.
+        await defaultAdapter().clear();
+      }
+    } finally {
+      pendingPassphrase.current = undefined;
+      setState({
+        phase: "onboarding",
+        conversations: [],
+        messages: [],
+        typing: new Set(),
+        connection: "offline",
+      });
+    }
+  }, []);
 
   /** Drops every decrypted trace from memory and from the screen. */
   const lock = useCallback(() => {
@@ -254,6 +303,7 @@ export function useChat() {
       createAccount,
       unlock,
       lock,
+      resetVault,
       openConversation,
       closeConversation,
       startConversation,
@@ -308,6 +358,7 @@ export function useChat() {
       closeConversation,
       createAccount,
       lock,
+      resetVault,
       openConversation,
       patch,
       refreshConversations,
@@ -319,11 +370,16 @@ export function useChat() {
   return { state, actions, typingTtlMs: TYPING_TTL_MS };
 }
 
+/** The vault opened but holds no identity. */
+class NoAccountError extends Error {
+  constructor() {
+    super("This vault has no account on it.");
+  }
+}
+
 async function resumeOrThrow(client: ChatClient): Promise<string> {
   if (!(await client.resume())) {
-    // The vault opened but holds no identity: recoverable only by starting
-    // over, so say so rather than failing obscurely later.
-    throw new Error("This vault has no account. Create a new one.");
+    throw new NoAccountError();
   }
   return client.accountId;
 }

@@ -159,8 +159,26 @@ describe("Vault", () => {
     await vault.putString("identity", "i");
 
     expect(await vault.list("conv:")).toEqual(["conv:alice", "conv:bob"]);
-    // The canary is bookkeeping, not the caller's data.
-    expect(await vault.list()).not.toContain("__canary__");
+
+    // The canary is bookkeeping, not the caller's data. Asserting on the exact
+    // string was not enough: the key was double-prefixed, so it leaked as
+    // "vault:record:__canary__" and the test passed anyway.
+    const listed = await vault.list();
+    expect(listed.sort()).toEqual(["conv:alice", "conv:bob", "identity"]);
+    for (const name of listed) {
+      expect(name).not.toContain("canary");
+    }
+  });
+
+  it("stores every record under exactly one prefix", async () => {
+    const vault = await Vault.create("pw", { adapter, ...fast });
+    await vault.putString("thing", "value");
+
+    // A double prefix round-trips fine when read and write share the mistake,
+    // so only the raw keys reveal it.
+    for (const key of await adapter.keys("vault:record:")) {
+      expect(key.slice("vault:record:".length)).not.toContain("vault:record:");
+    }
   });
 
   it("deletes records", async () => {
