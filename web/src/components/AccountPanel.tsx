@@ -7,10 +7,18 @@ import { formatAccountId } from "../lib/client/format";
 interface Props {
   accountId: string;
   connection: "offline" | "connecting" | "online";
+  notifications?: NotificationPermission | "unavailable";
+  onEnableNotifications?: () => void;
   onLock: () => void;
 }
 
-export function AccountPanel({ accountId, connection, onLock }: Props) {
+export function AccountPanel({
+  accountId,
+  connection,
+  notifications,
+  onEnableNotifications,
+  onLock,
+}: Props) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -47,6 +55,17 @@ export function AccountPanel({ accountId, connection, onLock }: Props) {
         <button type="button" className="button button--ghost" onClick={copy}>
           {copied ? "Copied" : "Copy ID"}
         </button>
+        {notifications === "default" && onEnableNotifications && (
+          // Offered as an action rather than prompted on load: a browser
+          // permission dialog nobody asked for teaches people to click block.
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={onEnableNotifications}
+          >
+            Notify me
+          </button>
+        )}
         <button type="button" className="button button--ghost" onClick={onLock}>
           Lock
         </button>

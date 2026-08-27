@@ -95,6 +95,8 @@ export default function Home() {
           <AccountPanel
             accountId={state.accountId}
             connection={state.connection}
+            notifications={state.notifications}
+            onEnableNotifications={() => void actions.enableNotifications()}
             onLock={actions.lock}
           />
         )}
@@ -114,6 +116,8 @@ export default function Home() {
           onDelete={(id) => void actions.deleteMessage(id)}
           onEdit={(id, body) => void actions.editMessage(id, body)}
           onDownload={(message) => void download(message)}
+          onReact={(id, emoji, active) => void actions.react(id, emoji, active)}
+          selfId={state.accountId}
         />
       </div>
 

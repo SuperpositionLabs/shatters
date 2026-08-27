@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatClient, TYPING_TTL_MS } from "../lib/client/chat-client";
 import { currentMembers } from "../lib/group/state";
+import { Notifier } from "../lib/client/notify";
 import { ChatStore } from "../lib/store/chat";
 import type { Conversation, StoredMessage } from "../lib/store/types";
 import { Vault } from "../lib/storage/vault";
@@ -29,6 +30,8 @@ export interface ChatState {
   /** Conversation ids where the peer is composing right now. */
   typing: Set<string>;
   connection: "offline" | "connecting" | "online";
+  /** Whether desktop notifications are available and permitted. */
+  notifications: NotificationPermission | "unavailable";
   error?: string;
   /** The current error can be escaped by destroying the vault and starting over. */
   recoverable?: boolean;
@@ -47,6 +50,7 @@ export function useChat() {
     messages: [],
     typing: new Set(),
     connection: "offline",
+    notifications: "unavailable",
   });
 
   const clientRef = useRef<ChatClient>(undefined);
@@ -59,6 +63,7 @@ export function useChat() {
   const pendingPassphrase = useRef<string | undefined>(undefined);
   /** Timers that clear a typing indicator when its TTL runs out. */
   const typingTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const notifier = useRef(new Notifier());
 
   const patch = useCallback((next: Partial<ChatState>) => {
     setState((current) => ({ ...current, ...next }));
@@ -69,7 +74,12 @@ export function useChat() {
     let cancelled = false;
     void (async () => {
       const exists = await Vault.exists(defaultAdapter());
-      if (!cancelled) patch({ phase: exists ? "unlocking" : "onboarding" });
+      if (!cancelled) {
+        patch({
+          phase: exists ? "unlocking" : "onboarding",
+          notifications: notifier.current.permission,
+        });
+      }
     })();
     return () => {
       cancelled = true;
@@ -140,6 +150,12 @@ export function useChat() {
         api,
         store,
         events: {
+          onIncoming: (conversationId, from, body) => {
+            // Only when the window is not focused, and revealing nothing by
+            // default - the Notifier decides, not the caller.
+            notifier.current.notify(from, body);
+            void conversationId;
+          },
           onConversationChanged: (id) => void refreshMessages(id),
           onConversationsChanged: () => void refreshConversations(),
           onTyping: markTyping,
@@ -244,6 +260,7 @@ export function useChat() {
         messages: [],
         typing: new Set(),
         connection: "offline",
+        notifications: notifier.current.permission,
       });
     }
   }, []);
@@ -262,6 +279,7 @@ export function useChat() {
       messages: [],
       typing: new Set(),
       connection: "offline",
+      notifications: notifier.current.permission,
     });
   }, []);
 
@@ -383,6 +401,16 @@ export function useChat() {
       /** History for a conversation that is not the open one, for previews. */
       messagesFor: async (conversationId: string): Promise<StoredMessage[]> =>
         (await clientRef.current?.messages(conversationId)) ?? [],
+      react: async (messageId: string, emoji: string, active = true) => {
+        const id = activeRef.current;
+        if (!id || !clientRef.current) return;
+        await clientRef.current.react(id, messageId, emoji, active);
+      },
+      enableNotifications: async () => {
+        // Requested from a user action. Prompting on load teaches people to
+        // click block without reading, and there is no second chance.
+        patch({ notifications: await notifier.current.request() });
+      },
       dismissError: () => patch({ error: undefined }),
     }),
     [
