@@ -13,6 +13,7 @@ import (
 	"github.com/SuperpositionLabs/shatters/server/internal/api"
 	"github.com/SuperpositionLabs/shatters/server/internal/config"
 	"github.com/SuperpositionLabs/shatters/server/internal/db"
+	"github.com/SuperpositionLabs/shatters/server/internal/maintenance"
 	"github.com/SuperpositionLabs/shatters/server/migrations"
 )
 
@@ -41,9 +42,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Housekeeping runs beside the server and stops with it. Cancelling the
+	// signal context is what ends it, so shutdown never waits on a sweep but
+	// never leaves one running either.
+	sweeper := maintenance.New(pool, cfg.SweepInterval)
+	go sweeper.Run(ctx)
+
+	service := api.NewServer(pool,
+		api.WithRateLimits(cfg.RateLimitPerMinute, cfg.RateLimitBurst),
+		api.WithAllowedOrigins(cfg.AllowedOrigins))
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           api.NewServer(pool),
+		Handler:           service,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -62,6 +72,11 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	// Close WebSockets first: they are hijacked connections, so Shutdown would
+	// otherwise return while they are still open and leave them to be severed
+	// by process exit.
+	service.Close()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

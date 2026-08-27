@@ -12,6 +12,8 @@ import _sodium from "libsodium-wrappers-sumo";
 
 export const ACCOUNT_DOMAIN = "shatters-account-v1";
 export const SIGNED_PREKEY_DOMAIN = "shatters-spk-v1";
+export const AUTH_DOMAIN = "shatters-auth-v1";
+export const IDENTITY_DH_DOMAIN = "shatters-idk-v1";
 
 type Sodium = typeof _sodium;
 
@@ -92,10 +94,106 @@ export async function signDetached(
   return s.crypto_sign_detached(message, privateKey);
 }
 
+/**
+ * Builds the exact byte string the server verifies an auth proof over:
+ *   "shatters-auth-v1" || nonce
+ *
+ * Exported so tests can pin the construction; callers should prefer
+ * `createAuthProof`.
+ */
+export function authProofMessage(nonce: Uint8Array): Uint8Array {
+  const domain = new TextEncoder().encode(AUTH_DOMAIN);
+  const message = new Uint8Array(domain.length + nonce.length);
+  message.set(domain);
+  message.set(nonce, domain.length);
+  return message;
+}
+
+/**
+ * Answers a `POST /v1/auth/challenge` nonce with a detached Ed25519 proof.
+ *
+ * The domain separator is what keeps an auth proof from being replayable as
+ * a signed prekey (or vice versa): every signature this identity produces is
+ * bound to the purpose it was made for. Must match the Go verification in
+ * `crypto.VerifyAuthProof`.
+ */
+export async function createAuthProof(
+  signingPrivateKey: Uint8Array,
+  nonce: Uint8Array,
+): Promise<Uint8Array> {
+  return signDetached(signingPrivateKey, authProofMessage(nonce));
+}
+
+/**
+ * Builds the byte string that binds an X25519 identity key to the Ed25519 one:
+ *   "shatters-idk-v1" || x25519_public
+ */
+export function identityDhMessage(dhPublicKey: Uint8Array): Uint8Array {
+  const domain = new TextEncoder().encode(IDENTITY_DH_DOMAIN);
+  const message = new Uint8Array(domain.length + dhPublicKey.length);
+  message.set(domain);
+  message.set(dhPublicKey, domain.length);
+  return message;
+}
+
+/** Signs this device's X25519 identity key with its Ed25519 identity key. */
+export async function signIdentityDhKey(
+  identity: Identity,
+): Promise<Uint8Array> {
+  return signDetached(
+    identity.signing.privateKey,
+    identityDhMessage(identity.dh.publicKey),
+  );
+}
+
+/**
+ * Verifies that an X25519 identity key really belongs to the identity that
+ * published it.
+ *
+ * The signed prekey has always been verified; this key was not, so an operator
+ * could substitute its own and control the DH2 input to X3DH.
+ */
+export async function verifyIdentityDhKey(
+  identityKey: Uint8Array,
+  dhKey: Uint8Array,
+  signature: Uint8Array,
+): Promise<boolean> {
+  const s = await sodium();
+  return s.crypto_sign_verify_detached(
+    signature,
+    identityDhMessage(dhKey),
+    identityKey,
+  );
+}
+
 export interface SignedPrekey {
   id: number;
   publicKey: Uint8Array;
   signature: Uint8Array;
+}
+
+/**
+ * Builds the byte string a signed prekey signature covers:
+ *   "shatters-spk-v1" || x25519_public || id_be32
+ *
+ * Shared by the signing and verification paths so the two can never drift.
+ * Must match the Go construction in `crypto.VerifySignedPrekey`.
+ */
+export function signedPrekeyMessage(
+  publicKey: Uint8Array,
+  id: number,
+): Uint8Array {
+  const domain = new TextEncoder().encode(SIGNED_PREKEY_DOMAIN);
+  const idBytes = new Uint8Array(4);
+  new DataView(idBytes.buffer).setUint32(0, id, false); // big-endian
+
+  const message = new Uint8Array(
+    domain.length + publicKey.length + idBytes.length,
+  );
+  message.set(domain);
+  message.set(publicKey, domain.length);
+  message.set(idBytes, domain.length + publicKey.length);
+  return message;
 }
 
 /**
@@ -110,16 +208,28 @@ export async function createSignedPrekey(
   const s = await sodium();
   const spk = s.crypto_kx_keypair();
 
-  const domain = new TextEncoder().encode(SIGNED_PREKEY_DOMAIN);
-  const idBytes = new Uint8Array(4);
-  new DataView(idBytes.buffer).setUint32(0, id, false); // big-endian
-  const message = new Uint8Array(
-    domain.length + spk.publicKey.length + idBytes.length,
+  const signature = await signDetached(
+    signingPrivateKey,
+    signedPrekeyMessage(spk.publicKey, id),
   );
-  message.set(domain);
-  message.set(spk.publicKey, domain.length);
-  message.set(idBytes, domain.length + spk.publicKey.length);
-
-  const signature = await signDetached(signingPrivateKey, message);
   return { id, publicKey: spk.publicKey, signature };
+}
+
+/**
+ * Verifies a signed prekey against the identity key that published it.
+ *
+ * This is what makes a fetched bundle trustworthy: the server hands out the
+ * prekeys, so without this check an operator could substitute its own and sit
+ * in the middle of the handshake.
+ */
+export async function verifySignedPrekey(
+  identityKey: Uint8Array,
+  prekey: SignedPrekey,
+): Promise<boolean> {
+  const s = await sodium();
+  return s.crypto_sign_verify_detached(
+    prekey.signature,
+    signedPrekeyMessage(prekey.publicKey, prekey.id),
+    identityKey,
+  );
 }

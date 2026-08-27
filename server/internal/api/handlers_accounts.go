@@ -10,9 +10,10 @@ import (
 )
 
 type registerRequest struct {
-	IdentityKey   string `json:"identity_key"`
-	IdentityDHKey string `json:"identity_dh_key"`
-	SignedPrekey  struct {
+	IdentityKey         string `json:"identity_key"`
+	IdentityDHKey       string `json:"identity_dh_key"`
+	IdentityDHSignature string `json:"identity_dh_signature"`
+	SignedPrekey        struct {
 		ID        uint32 `json:"id"`
 		PublicKey string `json:"public_key"`
 		Signature string `json:"signature"`
@@ -43,6 +44,18 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "identity_dh_key: "+err.Error())
 		return
 	}
+	dhSig, err := crypto.DecodeSignature(req.IdentityDHSignature)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "identity_dh_signature: "+err.Error())
+		return
+	}
+	// Refused rather than stored unverified: a bundle is only as trustworthy
+	// as the weakest thing in it, and this key had nothing vouching for it.
+	if err := crypto.VerifyIdentityDHKey(identityKey, dhKey, dhSig); err != nil {
+		writeError(w, http.StatusBadRequest, "identity DH key signature rejected")
+		return
+	}
+
 	spkPub, err := crypto.DecodeKey(req.SignedPrekey.PublicKey)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "signed_prekey.public_key: "+err.Error())
@@ -74,9 +87,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	publicID, created, err := db.CreateAccount(r.Context(), s.pool, db.CreateAccountParams{
-		PublicID:      crypto.AccountID(identityKey),
-		IdentityKey:   identityKey,
-		IdentityDHKey: dhKey,
+		PublicID:            crypto.AccountID(identityKey),
+		IdentityKey:         identityKey,
+		IdentityDHKey:       dhKey,
+		IdentityDHSignature: dhSig,
 		SignedPrekey: db.SignedPrekey{
 			ID:        req.SignedPrekey.ID,
 			PublicKey: spkPub,

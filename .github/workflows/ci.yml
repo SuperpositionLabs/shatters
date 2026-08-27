@@ -70,6 +70,111 @@ jobs:
         run: go test -race ./...
         working-directory: server
 
+  # Builds the deployable image and runs the real client against it. Every
+  # other job tests one side in isolation, so this is the only thing that can
+  # catch a client/server contract drift both sides independently agree on.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: build server image
+        run: docker build -t shatters-server:ci server
+
+      - name: start the stack
+        run: |
+          docker network create shatters-ci
+          docker run -d --name db --network shatters-ci \
+            -e POSTGRES_USER=shatters \
+            -e POSTGRES_PASSWORD=shatters-dev \
+            -e POSTGRES_DB=shatters \
+            --health-cmd "pg_isready -U shatters -d shatters" \
+            --health-interval 2s --health-timeout 3s --health-retries 15 \
+            postgres:16-alpine
+          for _ in $(seq 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' db)" = healthy ] && break
+            sleep 2
+          done
+          # The suite enrols several accounts, and each costs three
+          # rate-limited requests. The limiter itself is covered by a unit
+          # test; here it would only throttle the contract under test.
+          docker run -d --name server --network shatters-ci -p 8080:8080 \
+            -e PORT=8080 \
+            -e DATABASE_URL='postgres://shatters:shatters-dev@db:5432/shatters?sslmode=disable' \
+            -e RATE_LIMIT_PER_MINUTE=6000 \
+            -e RATE_LIMIT_BURST=2000 \
+            shatters-server:ci
+          for _ in $(seq 30); do
+            if curl -fsS http://localhost:8080/healthz; then
+              echo "server healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "server never became healthy"
+          docker logs server
+          exit 1
+
+      - name: install web dependencies
+        working-directory: web
+        run: npm ci
+
+      # The suite fails rather than skips when SHATTERS_E2E_URL is unset, so a
+      # green run here cannot mean "tested nothing".
+      - name: end-to-end suite
+        working-directory: web
+        env:
+          SHATTERS_E2E_URL: http://localhost:8080
+        run: npm run test:e2e
+
+      - name: server logs on failure
+        if: failure()
+        run: docker logs server
+
+  # A bounded fuzz pass on every pull request. A fuzzer that only runs when
+  # somebody remembers is not a gate, and every decoder here parses bytes an
+  # attacker chooses before anything has been authenticated.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: fuzz the decoders
+        working-directory: server
+        env:
+          # Overrides the workflow-level value. These targets are pure
+          # decoders and need no database, and the api package's TestMain
+          # aborts when DATABASE_URL is set but nothing is listening.
+          DATABASE_URL: ""
+        run: |
+          set -e
+          targets=$(grep -rho '^func Fuzz[A-Za-z0-9_]*' --include='*_test.go' . \
+            | sed 's/^func //' | sort -u)
+          if [ -z "$targets" ]; then
+            echo "no fuzz targets found; the discovery pattern has drifted"
+            exit 1
+          fi
+          for target in $targets; do
+            pkg=$(grep -rl "func ${target}(" --include='*_test.go' . | head -1 | xargs dirname)
+            echo "== $target ($pkg)"
+            go test "./$pkg" -run "^${target}$" -fuzz "^${target}$" -fuzztime=20s
+          done
+      - name: upload any crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus
+          path: server/**/testdata/fuzz/**
+          if-no-files-found: ignore
+
   web:
     runs-on: ubuntu-latest
     defaults:
@@ -84,6 +189,12 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: install dependencies
         run: npm ci
+      # The Go side has govulncheck on every pull request; the client had no
+      # equivalent. Gated on high and critical only: a check that fails on
+      # every transitive moderate gets disabled, and a disabled check is worse
+      # than none.
+      - name: dependency audit
+        run: npm audit --audit-level=high
       - name: unit tests
         run: npm test
       - name: typecheck

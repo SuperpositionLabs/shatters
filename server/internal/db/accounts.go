@@ -26,11 +26,14 @@ type SignedPrekey struct {
 
 // CreateAccountParams carries everything needed to open an account.
 type CreateAccountParams struct {
-	PublicID       string // opaque account identifier derived in application code
-	IdentityKey    []byte // Ed25519 public
-	IdentityDHKey  []byte // X25519 public
-	SignedPrekey   SignedPrekey
-	OneTimePrekeys []Prekey
+	PublicID      string // opaque account identifier derived in application code
+	IdentityKey   []byte // Ed25519 public
+	IdentityDHKey []byte // X25519 public
+	// Ed25519 signature over "shatters-idk-v1" || IdentityDHKey, binding the
+	// DH key to the identity that published it.
+	IdentityDHSignature []byte
+	SignedPrekey        SignedPrekey
+	OneTimePrekeys      []Prekey
 }
 
 // CreateAccount inserts an account with its initial prekeys atomically.
@@ -45,11 +48,11 @@ func CreateAccount(ctx context.Context, pool *pgxpool.Pool, p CreateAccountParam
 
 	var id [16]byte
 	err = tx.QueryRow(ctx,
-		`INSERT INTO accounts (identity_key, identity_dh_key, public_id)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO accounts (identity_key, identity_dh_key, identity_dh_signature, public_id)
+		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (identity_key) DO NOTHING
 		 RETURNING id`,
-		p.IdentityKey, p.IdentityDHKey, p.PublicID).Scan(&id)
+		p.IdentityKey, p.IdentityDHKey, p.IdentityDHSignature, p.PublicID).Scan(&id)
 	if err != nil {
 		if !errIsNoRows(err) {
 			return "", false, fmt.Errorf("db: insert account: %w", err)

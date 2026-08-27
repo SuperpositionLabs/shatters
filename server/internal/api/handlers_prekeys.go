@@ -75,8 +75,9 @@ func (s *Server) handleGetBundle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]any{
-		"identity_key":    base64.StdEncoding.EncodeToString(bundle.IdentityKey),
-		"identity_dh_key": base64.StdEncoding.EncodeToString(bundle.IdentityDHKey),
+		"identity_key":          base64.StdEncoding.EncodeToString(bundle.IdentityKey),
+		"identity_dh_key":       base64.StdEncoding.EncodeToString(bundle.IdentityDHKey),
+		"identity_dh_signature": base64.StdEncoding.EncodeToString(bundle.IdentityDHSignature),
 		"signed_prekey": map[string]any{
 			"id":         bundle.SignedPrekey.ID,
 			"public_key": base64.StdEncoding.EncodeToString(bundle.SignedPrekey.PublicKey),

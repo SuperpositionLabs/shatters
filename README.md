@@ -39,7 +39,7 @@ Read more in [`docs/protocol.md`](docs/protocol.md) and
 
 ## Quick start
 
-Prerequisites: Docker (or Go 1.22+ / Node 18+ for manual runs).
+Prerequisites: Docker (or Go 1.25+ / Node 22+ for manual runs).
 
 ```sh
 cd deploy
@@ -51,26 +51,96 @@ Then:
 - API: http://localhost:8080/healthz
 - PostgreSQL: localhost:5432 (`shatters` / `shatters-dev`, dev-only credentials)
 
-Run the server test suite:
+### Server configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `8080` | TCP port to listen on |
+| `DATABASE_URL` | — | PostgreSQL connection string (required) |
+| `RATE_LIMIT_PER_MINUTE` | `60` | Sustained per-IP rate on unauthenticated endpoints |
+| `RATE_LIMIT_BURST` | `20` | Per-IP burst allowance |
+| `CORS_ALLOWED_ORIGINS` | *(none)* | Comma-separated browser origins allowed to call from elsewhere |
+| `SWEEP_INTERVAL` | `1h` | How often expired rows are deleted; `0` disables the sweeper |
+
+Rate limiting is per-IP and in-memory only — no user is tracked. An invalid or
+non-positive limit refuses to start rather than falling back to a default, so a
+typo cannot silently leave the endpoints unprotected.
+
+`CORS_ALLOWED_ORIGINS` is empty by default, meaning **same-origin only** — the
+normal deployment puts client and server behind one reverse proxy. Set it only
+when the client is served from somewhere else (a CDN, or `next dev` on port
+3000). Origins are matched exactly, scheme and port included; `*` is rejected
+at startup rather than honoured. The WebSocket handshake reads the same list.
+
+The sweeper deletes expired envelopes, unanswered authentication challenges
+and lapsed session tokens. Expired rows are already invisible to readers, so
+this is not about correctness — it is about not keeping data the design
+promised to discard. Set `SWEEP_INTERVAL=0` if you would rather run the
+deletes from your own cron.
+
+For local development against `next dev`, point the client at the API and
+allow its origin:
 
 ```sh
-cd server
-go test ./...
+# web/.env.local
+NEXT_PUBLIC_SHATTERS_API=http://localhost:8080
 ```
+
+```sh
+# already set in deploy/docker-compose.yml
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+```
+
+Run the test suites:
+
+```sh
+cd server && go test ./...
+```
+
+```sh
+cd web && npm test
+```
+
+## Features
+
+| | |
+|---|---|
+| **Messaging** | Direct and group conversations, replies, edits, deletions, emoji reactions |
+| **Delivery** | Live WebSocket push, offline queue with a 30-day TTL, delivery and read receipts, typing indicators |
+| **Files** | Attachments of any size, chunked to fit the envelope cap |
+| **History** | Encrypted on-device storage, survives reload, searchable without an index |
+| **Identity** | No usernames, e-mails or passwords — an account *is* a keypair |
+| **Verification** | Safety numbers and an automatic warning when a contact's key changes |
+| **Notifications** | Desktop notifications that reveal nothing by default |
 
 ## Status
 
-v2 development follows milestone-based git-flow. Current state:
+All milestones complete. v2 development followed milestone-based git-flow:
 
 | Milestone | Scope | State |
 |---|---|---|
 | M0 – Foundation | Monorepo, CI, migrations | ✅ done |
-| M1 – Identities | Registration, prekeys, key directory | 🚧 in progress |
-| M2 – E2EE Sessions | X3DH + Double Ratchet | ⬜ |
-| M3 – Transport | Authenticated WebSocket, offline queue | ⬜ |
-| M4 – Encrypted Persistence | Client-side history | ⬜ |
-| M5 – Hardening | Rate limiting, fuzzing, audits | ⬜ |
-| M6 – Deploy & Docs | Release image, diagrams | ⬜ |
+| M1 – Identities | Registration, prekeys, key directory | ✅ done |
+| M2 – E2EE Sessions | X3DH + Double Ratchet | ✅ done |
+| M3 – Transport | Authenticated WebSocket, offline queue | ✅ done |
+| M4 – Encrypted Persistence | Client-side history | ✅ done |
+| M5 – Hardening | Rate limiting, fuzzing, audits | ✅ done |
+| M6 – Deploy & Docs | Release image, documentation | ✅ done |
+
+### What this is not
+
+Being explicit is more useful than a feature list that quietly omits things.
+
+- **No voice or video.** Calls need WebRTC signalling and a TURN server, which
+  is a different product with a different metadata profile.
+- **No multi-device.** One account is one device. Linking a second would need
+  the identity key to leave the device it was generated on, which is the one
+  thing this design refuses.
+- **No account recovery.** Forgetting the passphrase loses the history, and
+  losing the device loses the account. That is what "no third parties" costs.
+- **Not independently audited.** The cryptography follows the Signal
+  specifications and uses only libsodium and the Go standard library, but no
+  external review has been done.
 
 ## Contributing
 

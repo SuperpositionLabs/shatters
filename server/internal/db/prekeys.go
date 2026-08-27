@@ -17,8 +17,10 @@ const MaxStoredPrekeysPerAccount = 200
 type Bundle struct {
 	IdentityKey   []byte
 	IdentityDHKey []byte
-	SignedPrekey  SignedPrekey
-	OneTimePrekey *Prekey // nil when the account is out of one-time prekeys
+	// Proves the DH key belongs to IdentityKey; clients must verify it.
+	IdentityDHSignature []byte
+	SignedPrekey        SignedPrekey
+	OneTimePrekey       *Prekey // nil when the account is out of one-time prekeys
 }
 
 // AddOneTimePrekeys inserts new one-time prekeys, enforcing the per-account
@@ -83,7 +85,7 @@ func FetchBundle(ctx context.Context, pool *pgxpool.Pool, publicID string) (Bund
 		otkPub  []byte
 	)
 	err = tx.QueryRow(ctx,
-		`SELECT a.id, a.identity_key, a.identity_dh_key,
+		`SELECT a.id, a.identity_key, a.identity_dh_key, a.identity_dh_signature,
 		        sp.id, sp.public_key, sp.signature
 		 FROM accounts a
 		 JOIN signed_prekeys sp ON sp.account_id = a.id
@@ -91,7 +93,7 @@ func FetchBundle(ctx context.Context, pool *pgxpool.Pool, publicID string) (Bund
 		 ORDER BY sp.created_at DESC
 		 LIMIT 1`,
 		publicID).Scan(
-		&account, &b.IdentityKey, &b.IdentityDHKey,
+		&account, &b.IdentityKey, &b.IdentityDHKey, &b.IdentityDHSignature,
 		&spkID, &b.SignedPrekey.PublicKey, &b.SignedPrekey.Signature)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

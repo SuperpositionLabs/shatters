@@ -9,22 +9,28 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.mts"
   },
   "dependencies": {
     "libsodium-sumo": "^0.7.16",
     "libsodium-wrappers-sumo": "^0.7.15",
-    "next": "^15.1.6",
+    "next": "^16.3.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.6",
     "@types/libsodium-wrappers-sumo": "^0.7.8",
     "@types/node": "^22.10.10",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "jsdom": "^25.0.1",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.11"
   },
   "allowScripts": {
     "esbuild@0.21.5": true
