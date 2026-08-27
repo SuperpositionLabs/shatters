@@ -76,7 +76,16 @@ func AccountID(identityKey []byte) string {
 
 // VerifySignedPrekey checks that sig is a valid Ed25519 signature by
 // identityKey over domain || spkPublicKey || id (big-endian uint32).
+//
+// Lengths are checked here rather than assumed, for the same reason as
+// VerifyAuthProof: ed25519.Verify panics on a wrong-sized public key, and a
+// verification routine must fail rather than crash on input it does not like.
+// Found by fuzzing.
 func VerifySignedPrekey(identityKey, spkPublicKey, sig []byte, id uint32) error {
+	if len(identityKey) != PublicKeySize || len(sig) != SignatureSize {
+		return ErrBadSignature
+	}
+
 	msg := make([]byte, 0, len(domainSignedPrek)+len(spkPublicKey)+4)
 	msg = append(msg, domainSignedPrek...)
 	msg = append(msg, spkPublicKey...)
