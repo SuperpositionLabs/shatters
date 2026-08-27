@@ -149,6 +149,11 @@ jobs:
           cache-dependency-path: server/go.sum
       - name: fuzz the decoders
         working-directory: server
+        env:
+          # Overrides the workflow-level value. These targets are pure
+          # decoders and need no database, and the api package's TestMain
+          # aborts when DATABASE_URL is set but nothing is listening.
+          DATABASE_URL: ""
         run: |
           set -e
           targets=$(grep -rho '^func Fuzz[A-Za-z0-9_]*' --include='*_test.go' . \
