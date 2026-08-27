@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/SuperpositionLabs/shatters/server/internal/config"
 	"github.com/SuperpositionLabs/shatters/server/internal/ratelimit"
 )
 
@@ -24,6 +25,11 @@ type Option func(*Server)
 // WithRateLimiter overrides the default per-IP limiter.
 func WithRateLimiter(l *ratelimit.Limiter) Option {
 	return func(s *Server) { s.limiter = l }
+}
+
+// WithRateLimits sets the per-IP allowance from configuration.
+func WithRateLimits(perMinute, burst int) Option {
+	return func(s *Server) { s.limiter = ratelimit.NewLimiter(perMinute, burst) }
 }
 
 // Service is the top-level HTTP handler plus the resources that outlive a
@@ -54,7 +60,12 @@ func (svc *Service) Close() {
 //   - /v1/accounts + /v1/auth/*: rate limited per IP (abuse surface)
 //   - authenticated routes: bearer session required
 func NewServer(pool *pgxpool.Pool, opts ...Option) *Service {
-	s := &Server{pool: pool, limiter: ratelimit.NewLimiter(60, 20), hub: newHub()}
+	s := &Server{
+		pool: pool,
+		limiter: ratelimit.NewLimiter(
+			config.DefaultRateLimitPerMinute, config.DefaultRateLimitBurst),
+		hub: newHub(),
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
