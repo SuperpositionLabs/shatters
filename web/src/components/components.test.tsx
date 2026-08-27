@@ -457,3 +457,82 @@ describe("AccountPanel", () => {
     expect(onLock).toHaveBeenCalled();
   });
 });
+
+describe("UnlockScreen recovery", () => {
+  it("offers no way out when the error is not recoverable", () => {
+    render(
+      <UnlockScreen
+        mode="unlocking"
+        error="incorrect passphrase"
+        onCreate={asyncNoop}
+        onUnlock={asyncNoop}
+        onReset={asyncNoop}
+      />,
+    );
+
+    // A wrong passphrase is not a reason to offer to delete everything.
+    expect(screen.queryByRole("button", { name: /start over/i })).toBeNull();
+  });
+
+  it("offers a way out of a vault with no account", async () => {
+    render(
+      <UnlockScreen
+        mode="unlocking"
+        error="This vault has no account on it."
+        recoverable
+        onCreate={asyncNoop}
+        onUnlock={asyncNoop}
+        onReset={asyncNoop}
+      />,
+    );
+
+    // Without this the state is escapable only by clearing site data, which
+    // nothing tells the user to do.
+    expect(screen.getByRole("button", { name: /start over/i })).toBeDefined();
+  });
+
+  it("requires a second, informed action before destroying anything", async () => {
+    const onReset = vi.fn(asyncNoop);
+    render(
+      <UnlockScreen
+        mode="unlocking"
+        error="This vault has no account on it."
+        recoverable
+        onCreate={asyncNoop}
+        onUnlock={asyncNoop}
+        onReset={onReset}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /start over/i }));
+    expect(onReset).not.toHaveBeenCalled();
+    // The consequence has to be stated before it happens, not after.
+    expect(screen.getByText(/permanently deletes/i)).toBeDefined();
+    expect(screen.getByText(/cannot be undone/i)).toBeDefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /delete and start over/i }),
+    );
+    expect(onReset).toHaveBeenCalled();
+  });
+
+  it("lets the user back out of the confirmation", async () => {
+    const onReset = vi.fn(asyncNoop);
+    render(
+      <UnlockScreen
+        mode="unlocking"
+        error="This vault has no account on it."
+        recoverable
+        onCreate={asyncNoop}
+        onUnlock={asyncNoop}
+        onReset={onReset}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /start over/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(onReset).not.toHaveBeenCalled();
+    expect(screen.queryByText(/permanently deletes/i)).toBeNull();
+  });
+});

@@ -54,8 +54,10 @@ export default function Home() {
       <UnlockScreen
         mode={state.phase}
         error={state.error}
+        recoverable={state.recoverable}
         onCreate={actions.createAccount}
         onUnlock={actions.unlock}
+        onReset={actions.resetVault}
       />
     );
   }

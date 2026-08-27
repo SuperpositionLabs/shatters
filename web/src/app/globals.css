@@ -88,6 +88,16 @@ body {
   border-color: var(--accent);
 }
 
+.button--danger {
+  background: var(--danger);
+  color: #1a0b0d;
+  font-weight: 600;
+}
+
+.button--danger:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
 .button--link {
   background: none;
   border: none;
@@ -184,6 +194,26 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
+}
+
+.unlock__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border: 1px solid rgba(242, 112, 122, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+}
+
+.unlock__warning {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--fg-muted);
+}
+
+.unlock__confirmrow {
+  display: flex;
+  gap: 0.4rem;
 }
 
 .unlock__note {
