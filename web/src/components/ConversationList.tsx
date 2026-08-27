@@ -12,6 +12,7 @@ interface Props {
   typing: Set<string>;
   onOpen: (id: string) => void;
   onStart: (id: string, displayName?: string) => void;
+  onCreateGroup: (name: string, members: string[]) => void;
   onDelete: (id: string) => void;
 }
 
@@ -22,11 +23,14 @@ export function ConversationList({
   typing,
   onOpen,
   onStart,
+  onCreateGroup,
   onDelete,
 }: Props) {
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<"direct" | "group" | undefined>();
   const [peerId, setPeerId] = useState("");
   const [name, setName] = useState("");
+  const [groupName, setGroupName] = useState("");
+  const [groupMembers, setGroupMembers] = useState("");
   const [error, setError] = useState<string>();
 
   function submit(event: FormEvent) {
@@ -44,24 +48,97 @@ export function ConversationList({
     setPeerId("");
     setName("");
     setError(undefined);
-    setAdding(false);
+    setAdding(undefined);
+  }
+
+  function submitGroup(event: FormEvent) {
+    event.preventDefault();
+
+    if (!groupName.trim()) {
+      setError("Give the group a name.");
+      return;
+    }
+
+    // One id per line, each validated: a single bad paste should say which
+    // entry is wrong rather than failing the whole form obscurely.
+    const ids: string[] = [];
+    for (const line of groupMembers.split(/\n+/)) {
+      if (!line.trim()) continue;
+      const normalized = normalizeAccountId(line);
+      if (!normalized) {
+        setError(`Not an account ID: ${line.trim().slice(0, 16)}…`);
+        return;
+      }
+      ids.push(normalized);
+    }
+    if (ids.length === 0) {
+      setError("Add at least one member.");
+      return;
+    }
+
+    onCreateGroup(groupName.trim(), ids);
+    setGroupName("");
+    setGroupMembers("");
+    setError(undefined);
+    setAdding(undefined);
   }
 
   return (
     <section className="sidebar" aria-label="Conversations">
       <header className="sidebar__header">
         <h2 className="sidebar__title">Chats</h2>
-        <button
-          type="button"
-          className="button button--ghost"
-          onClick={() => setAdding((v) => !v)}
-          aria-expanded={adding}
-        >
-          {adding ? "Cancel" : "New"}
-        </button>
+        <div className="sidebar__actions">
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={() => setAdding((v) => (v === "direct" ? undefined : "direct"))}
+            aria-expanded={adding === "direct"}
+          >
+            {adding === "direct" ? "Cancel" : "New"}
+          </button>
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={() => setAdding((v) => (v === "group" ? undefined : "group"))}
+            aria-expanded={adding === "group"}
+          >
+            {adding === "group" ? "Cancel" : "New group"}
+          </button>
+        </div>
       </header>
 
-      {adding && (
+      {adding === "group" && (
+        <form className="sidebar__new" onSubmit={submitGroup}>
+          <label className="field">
+            <span className="field__label">Group name</span>
+            <input
+              className="field__input"
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              autoFocus
+            />
+          </label>
+          <label className="field">
+            <span className="field__label">Members, one ID per line</span>
+            <textarea
+              className="field__input field__input--mono"
+              rows={4}
+              value={groupMembers}
+              onChange={(e) => setGroupMembers(e.target.value)}
+            />
+          </label>
+          {error && (
+            <p className="alert alert--inline" role="alert">
+              {error}
+            </p>
+          )}
+          <button type="submit" className="button button--primary">
+            Create group
+          </button>
+        </form>
+      )}
+
+      {adding === "direct" && (
         <form className="sidebar__new" onSubmit={submit}>
           <label className="field">
             <span className="field__label">Account ID</span>
@@ -114,6 +191,11 @@ export function ConversationList({
                   aria-current={conversation.id === activeId}
                 >
                   <span className="conversation__name">
+                    {conversation.isGroup && (
+                      <span className="conversation__kind" aria-label="Group">
+                        #
+                      </span>
+                    )}
                     {conversation.displayName ?? shortAccountId(conversation.id)}
                   </span>
                   <span className="conversation__preview">

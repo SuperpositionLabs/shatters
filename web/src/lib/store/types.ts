@@ -31,6 +31,13 @@ export interface StoredMessage {
   attachment?: StoredAttachment;
   /** Set when the sender has since retracted this message. */
   deletedAt?: number;
+  /**
+   * Who sent it, for group conversations.
+   *
+   * Absent in a direct chat, where the conversation id already identifies the
+   * other party.
+   */
+  senderId?: string;
 }
 
 export interface StoredAttachment {
@@ -50,4 +57,6 @@ export interface Conversation {
   unreadCount: number;
   /** Set when the peer is currently composing; not persisted. */
   typingUntil?: number;
+  /** True when this conversation is a group rather than a direct chat. */
+  isGroup?: boolean;
 }

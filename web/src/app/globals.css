@@ -267,6 +267,28 @@ body {
   font-size: 1rem;
 }
 
+.sidebar__actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.conversation__kind {
+  color: var(--accent);
+  margin-right: 0.25rem;
+  font-weight: 700;
+}
+
+.chat__leave {
+  margin-left: auto;
+}
+
+.message__sender {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 .sidebar__new {
   display: flex;
   flex-direction: column;

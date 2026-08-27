@@ -7,12 +7,14 @@
  */
 import { deserializeSession, serializeSession } from "../crypto/serialize";
 import type { Session } from "../crypto/session";
+import type { GroupState } from "../group/state";
 import type { Vault } from "../storage/vault";
 import type { Conversation, MessageStatus, StoredMessage } from "./types";
 
 const IDENTITY_KEY = "identity";
 const CONVERSATIONS_KEY = "conversations";
 const sessionKey = (id: string) => `session:${id}`;
+const groupKey = (id: string) => `group:${id}`;
 const historyKey = (id: string) => `history:${id}`;
 
 /** Serialised device identity. Private keys included, so vault-only. */
@@ -130,10 +132,11 @@ export class ChatStore {
         all.filter((c) => c.id !== id),
       );
     });
-    // History and session go too: leaving them would keep a readable record of
-    // a conversation the user asked to remove.
+    // History, session and group state go too: leaving any of them would keep
+    // a readable record of a conversation the user asked to remove.
     await this.vault.delete(historyKey(id));
     await this.vault.delete(sessionKey(id));
+    await this.vault.delete(groupKey(id));
   }
 
   // --- messages -----------------------------------------------------------
@@ -229,6 +232,22 @@ export class ChatStore {
 
   async clearUnread(conversationId: string): Promise<void> {
     await this.upsertConversation(conversationId, { unreadCount: 0 });
+  }
+
+  // --- groups -------------------------------------------------------------
+
+  async saveGroup(state: GroupState): Promise<void> {
+    await this.serialize(groupKey(state.id), () =>
+      this.vault.putJSON(groupKey(state.id), state),
+    );
+  }
+
+  async loadGroup(groupId: string): Promise<GroupState | undefined> {
+    return this.vault.getJSON<GroupState>(groupKey(groupId));
+  }
+
+  async deleteGroup(groupId: string): Promise<void> {
+    await this.vault.delete(groupKey(groupId));
   }
 
   // --- attachments --------------------------------------------------------

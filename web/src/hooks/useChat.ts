@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatClient, TYPING_TTL_MS } from "../lib/client/chat-client";
+import { currentMembers } from "../lib/group/state";
 import { ChatStore } from "../lib/store/chat";
 import type { Conversation, StoredMessage } from "../lib/store/types";
 import { Vault } from "../lib/storage/vault";
@@ -310,7 +311,37 @@ export function useChat() {
       sendText: async (body: string) => {
         const id = activeRef.current;
         if (!id || !clientRef.current) return;
-        await clientRef.current.sendText(id, body);
+
+        // A group and a direct chat are the same thing to the composer, so the
+        // engine picks the path rather than every caller remembering to.
+        const conversation = await clientRef.current.conversations();
+        const isGroup = conversation.find((c) => c.id === id)?.isGroup === true;
+        if (isGroup) await clientRef.current.sendGroupText(id, body);
+        else await clientRef.current.sendText(id, body);
+      },
+      createGroup: async (name: string, members: string[]) => {
+        if (!clientRef.current) return;
+        patch({ error: undefined });
+        try {
+          const group = await clientRef.current.createGroupConversation(
+            name,
+            members,
+          );
+          await refreshConversations();
+          await openConversation(group.id);
+        } catch (error) {
+          patch({ error: describe(error) });
+        }
+      },
+      leaveGroup: async (groupId: string) => {
+        if (!clientRef.current) return;
+        await clientRef.current.leaveGroup(groupId);
+        if (activeRef.current === groupId) closeConversation();
+        await refreshConversations();
+      },
+      groupMembers: async (groupId: string): Promise<string[]> => {
+        const state = await clientRef.current?.group(groupId);
+        return state ? currentMembers(state) : [];
       },
       sendAttachment: async (file: File) => {
         const id = activeRef.current;

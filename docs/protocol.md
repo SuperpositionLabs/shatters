@@ -192,6 +192,51 @@ Operational properties:
 Recipients who are not connected fall back to the queue above: envelopes persist with a TTL (default 30 days) and are pulled on reconnect.
 - The server cannot read `ciphertext`, learn recipients' contacts beyond routing metadata, or correlate beyond what §10 admits.
 
+## 9a. Groups
+
+Groups are a client-side construction. The server learns nothing about them: no
+group exists in the schema, membership is never uploaded, and the envelopes
+belonging to one message are indistinguishable from unrelated direct messages.
+
+**Delivery is pairwise fan-out.** A group message is encrypted separately for
+each member over the ratchet session that already exists with them, costing
+*one envelope per member*. A shared sender key would be cheaper, but it trades
+away exactly what the Double Ratchet provides: a key shared by the group has no
+per-recipient forward secrecy, and removing a member requires rotating and
+redistributing it. For the group sizes a self-hosted instance realistically
+serves, the envelope cost is the better side of that trade. It is stated here
+rather than left to be discovered from a bandwidth graph.
+
+**The group id is random**, never derived from its membership. An id computed
+from who is in the group would leak precisely that to anyone who saw one.
+
+### Convergence without a server
+
+There is no authority to order membership changes, and a member who was offline
+for several of them must converge on rejoining without replaying them in order.
+Membership is therefore a **last-writer-wins element set**: each account carries
+the time it was last added and last removed, and is a member when the add is
+more recent. Both operations commute and are idempotent, so any order of any
+subset reaches the same result. The group name is last-writer-wins on the same
+basis.
+
+Two devices can stamp the same millisecond, and "whichever arrived first" is not
+a rule everyone can agree on, so exact ties are broken by comparing the author
+id. Arbitrary, but identical everywhere, which is the only property required.
+
+Wall clocks are not comparable across devices, so a change is stamped **one past
+the newest change its author has already seen** whenever that exceeds the local
+clock. Without this, a member whose clock lagged would lose every edit they
+made — permanently, and with no feedback explaining why.
+
+### Authorisation
+
+A group message or membership change is accepted only from an account that is a
+current member **in the recipient's own view**. Anyone who learns a group id
+could otherwise inject messages into it, or add themselves to it. Removed
+members are told they were removed, so they stop delivering locally rather than
+waiting to notice the silence.
+
 ## 10. Metadata policy
 
 Stored by the server (exhaustive list):

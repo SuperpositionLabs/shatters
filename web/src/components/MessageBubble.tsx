@@ -12,6 +12,8 @@ import type { StoredMessage } from "../lib/store/types";
 
 interface Props {
   message: StoredMessage;
+  /** Shown above incoming group messages, where the peer is not implied. */
+  senderLabel?: string;
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (id: string, body: string) => void;
@@ -20,6 +22,7 @@ interface Props {
 
 export function MessageBubble({
   message,
+  senderLabel,
   onRetry,
   onDelete,
   onEdit,
@@ -41,6 +44,10 @@ export function MessageBubble({
 
   return (
     <div className={bubbleClass(outgoing)}>
+      {senderLabel && !outgoing && (
+        <p className="message__sender">{senderLabel}</p>
+      )}
+
       {message.attachment && (
         <button
           type="button"

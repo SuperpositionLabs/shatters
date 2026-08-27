@@ -1,140 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Identity, SignedPrekey } from "../crypto/identity";
+import { ChatClient, PREKEY_LOW_WATER, PREKEY_TARGET } from "./chat-client";
+import { ChatStore } from "../store/chat";
 import { MemoryAdapter } from "../storage/adapter";
 import { Vault } from "../storage/vault";
-import { ChatStore } from "../store/chat";
-import type { ApiClient } from "../transport/api";
-import type { DeliveredEnvelope } from "../transport/socket";
-import { ChatClient, PREKEY_LOW_WATER, PREKEY_TARGET } from "./chat-client";
-
-const fast = { strength: "interactive" } as const;
-
-/**
- * An in-memory stand-in for the server: it holds registered bundles and routes
- * envelopes between clients, so two real ChatClients can talk without one.
- */
-class FakeNetwork {
-  readonly accounts = new Map<
-    string,
-    {
-      identityKey: Uint8Array;
-      identityDhKey: Uint8Array;
-      signedPrekey: { id: number; publicKey: Uint8Array; signature: Uint8Array };
-      oneTimePrekeys: { id: number; publicKey: Uint8Array }[];
-    }
-  >();
-
-  readonly inboxes = new Map<string, DeliveredEnvelope[]>();
-  private nextEnvelope = 0;
-  /** Set to make the next send fail, for the failure paths. */
-  failNextSend = false;
-
-  apiFor(accountId: () => string): ApiClient {
-    const net = this;
-
-    return {
-      get sessionToken() {
-        return "token";
-      },
-      register: async (
-        identity: Identity,
-        signedPrekey: SignedPrekey,
-        oneTimePrekeys: { id: number; publicKey: Uint8Array }[] = [],
-      ) => {
-        const { accountId: derive } = await import("../crypto/identity");
-        const id = await derive(identity.signing.publicKey);
-        net.accounts.set(id, {
-          identityKey: identity.signing.publicKey,
-          identityDhKey: identity.dh.publicKey,
-          signedPrekey,
-          oneTimePrekeys: [...oneTimePrekeys],
-        });
-        return id;
-      },
-      authenticate: async () => "token",
-      useToken: () => undefined,
-      fetchBundle: async (peer: string) => {
-        const account = net.accounts.get(peer);
-        if (!account) throw new Error(`unknown account ${peer}`);
-        // Consumed on fetch, exactly as the server does.
-        const otk = account.oneTimePrekeys.shift();
-        return {
-          identityKey: account.identityKey,
-          identityDhKey: account.identityDhKey,
-          signedPrekey: account.signedPrekey,
-          oneTimePrekey: otk,
-        };
-      },
-      uploadPrekeys: async (prekeys: { id: number; publicKey: Uint8Array }[]) => {
-        net.accounts.get(accountId())?.oneTimePrekeys.push(...prekeys);
-        return prekeys.length;
-      },
-      sendEnvelope: async (recipient: string, payload: Uint8Array) => {
-        if (net.failNextSend) {
-          net.failNextSend = false;
-          throw new Error("network down");
-        }
-        const id = `env-${net.nextEnvelope++}`;
-        const inbox = net.inboxes.get(recipient) ?? [];
-        inbox.push({
-          id,
-          senderId: accountId(),
-          payload,
-          createdAt: "now",
-        });
-        net.inboxes.set(recipient, inbox);
-        return id;
-      },
-      fetchEnvelopes: async () => [],
-      acknowledge: async () => 0,
-    } as unknown as ApiClient;
-  }
-
-  /** Delivers everything queued for a client into its engine. */
-  async drain(to: string, client: ChatClient): Promise<void> {
-    const inbox = this.inboxes.get(to) ?? [];
-    this.inboxes.set(to, []);
-    for (const envelope of inbox) {
-      await client.handleEnvelope(envelope);
-    }
-  }
-}
-
-interface Peer {
-  client: ChatClient;
-  store: ChatStore;
-  id: string;
-  typing: { conversationId: string; until: number }[];
-  errors: unknown[];
-}
-
-async function makePeer(net: FakeNetwork, clock = { t: 1000 }): Promise<Peer> {
-  const vault = await Vault.create("pw", {
-    adapter: new MemoryAdapter(),
-    ...fast,
-  });
-  const store = new ChatStore(vault);
-
-  const typing: { conversationId: string; until: number }[] = [];
-  const errors: unknown[] = [];
-
-  let ownId = "";
-  let counter = 0;
-  const client = new ChatClient({
-    api: net.apiFor(() => ownId),
-    store,
-    now: () => clock.t++,
-    newId: () => `id-${ownId.slice(0, 4)}-${counter++}`,
-    events: {
-      onTyping: (conversationId, until) => typing.push({ conversationId, until }),
-      onError: (e) => errors.push(e),
-    },
-  });
-
-  ownId = await client.register();
-  return { client, store, id: ownId, typing, errors };
-}
+import { FakeNetwork, fastVault, makePeer, rawSend } from "./test-harness";
 
 describe("ChatClient", () => {
   let net: FakeNetwork;
@@ -411,12 +281,12 @@ describe("ChatClient", () => {
     await alice.client.startConversation(bob.id);
 
     // Reach past the public API to send a frame from a hypothetical future.
-    const send = (
-      alice.client as unknown as {
-        sendContent: (id: string, c: unknown) => Promise<string>;
-      }
-    ).sendContent.bind(alice.client);
-    await send(bob.id, { type: "text", id: "x", body: "ok", timestamp: 1 });
+    await rawSend(alice.client)(bob.id, {
+      type: "text",
+      id: "x",
+      body: "ok",
+      timestamp: 1,
+    });
 
     await net.drain(bob.id, bob.client);
     expect(await bob.client.messages(alice.id)).toHaveLength(1);
@@ -492,7 +362,7 @@ describe("ChatClient", () => {
   it("reports no identity to resume from an empty store", async () => {
     const vault = await Vault.create("pw", {
       adapter: new MemoryAdapter(),
-      ...fast,
+      ...fastVault,
     });
     const client = new ChatClient({
       api: net.apiFor(() => ""),
@@ -542,7 +412,7 @@ describe("ChatClient", () => {
   it("throws rather than guessing when used before it is ready", async () => {
     const vault = await Vault.create("pw", {
       adapter: new MemoryAdapter(),
-      ...fast,
+      ...fastVault,
     });
     const client = new ChatClient({
       api: net.apiFor(() => ""),
