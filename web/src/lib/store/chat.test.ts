@@ -4,6 +4,7 @@ import {
   type Identity,
   generateIdentity,
   signDetached,
+  signIdentityDhKey,
   signedPrekeyMessage,
   sodium,
 } from "../crypto/identity";
@@ -61,6 +62,7 @@ async function establish() {
   const aliceSession = await startSession(alice, {
     identityKey: bob.signing.publicKey,
     identityDhKey: bob.dh.publicKey,
+    identityDhSignature: await signIdentityDhKey(bob),
     signedPrekey: { id: 1, publicKey: spkPair.publicKey, signature },
   });
 

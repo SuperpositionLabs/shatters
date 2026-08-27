@@ -4,6 +4,7 @@ import {
   type Identity,
   generateIdentity,
   signDetached,
+  signIdentityDhKey,
   signedPrekeyMessage,
   sodium,
 } from "./identity";
@@ -46,6 +47,7 @@ describe("X3DH", () => {
     const bundle: PrekeyBundle = {
       identityKey: bob.signing.publicKey,
       identityDhKey: bob.dh.publicKey,
+      identityDhSignature: await signIdentityDhKey(bob),
       signedPrekey: {
         id: spk.id,
         publicKey: spk.pair.publicKey,
@@ -89,6 +91,7 @@ describe("X3DH", () => {
     const bundle: PrekeyBundle = {
       identityKey: bob.signing.publicKey,
       identityDhKey: bob.dh.publicKey,
+      identityDhSignature: await signIdentityDhKey(bob),
       signedPrekey: {
         id: spk.id,
         publicKey: spk.pair.publicKey,
@@ -115,6 +118,7 @@ describe("X3DH", () => {
     const base = {
       identityKey: bob.signing.publicKey,
       identityDhKey: bob.dh.publicKey,
+      identityDhSignature: await signIdentityDhKey(bob),
       signedPrekey: {
         id: spk.id,
         publicKey: spk.pair.publicKey,
@@ -137,6 +141,7 @@ describe("X3DH", () => {
     const bundle: PrekeyBundle = {
       identityKey: bob.signing.publicKey,
       identityDhKey: bob.dh.publicKey,
+      identityDhSignature: await signIdentityDhKey(bob),
       signedPrekey: {
         id: spk.id,
         publicKey: spk.pair.publicKey,
@@ -162,6 +167,7 @@ describe("X3DH", () => {
     const bundle: PrekeyBundle = {
       identityKey: bob.signing.publicKey,
       identityDhKey: bob.dh.publicKey,
+      identityDhSignature: await signIdentityDhKey(bob),
       signedPrekey: {
         id: forged.id,
         publicKey: forged.pair.publicKey,
@@ -178,6 +184,7 @@ describe("X3DH", () => {
     const bundle: PrekeyBundle = {
       identityKey: bob.signing.publicKey,
       identityDhKey: bob.dh.publicKey,
+      identityDhSignature: await signIdentityDhKey(bob),
       signedPrekey: {
         id: spk.id + 1, // signature covers the id, so this must fail
         publicKey: spk.pair.publicKey,
@@ -188,6 +195,46 @@ describe("X3DH", () => {
     await expect(initiateX3DH(alice, bundle)).rejects.toThrow(X3DHError);
   });
 
+  it("rejects a substituted identity DH key", async () => {
+    const s = await sodium();
+    const spk = await makeSignedPair(bob, 20);
+    const mallory = s.crypto_kx_keypair();
+
+    // Signed for bob's real key, then the key itself swapped - exactly what a
+    // malicious operator would serve. Unverified, DH2 would contribute no
+    // entropy an attacker lacks.
+    await expect(
+      initiateX3DH(alice, {
+        identityKey: bob.signing.publicKey,
+        identityDhKey: mallory.publicKey,
+        identityDhSignature: await signIdentityDhKey(bob),
+        signedPrekey: {
+          id: spk.id,
+          publicKey: spk.pair.publicKey,
+          signature: spk.signature,
+        },
+      }),
+    ).rejects.toThrow(/identity DH key/);
+  });
+
+  it("rejects an identity DH key signed by someone else", async () => {
+    const spk = await makeSignedPair(bob, 21);
+    const mallory = await generateIdentity();
+
+    await expect(
+      initiateX3DH(alice, {
+        identityKey: bob.signing.publicKey,
+        identityDhKey: bob.dh.publicKey,
+        identityDhSignature: await signIdentityDhKey(mallory),
+        signedPrekey: {
+          id: spk.id,
+          publicKey: spk.pair.publicKey,
+          signature: spk.signature,
+        },
+      }),
+    ).rejects.toThrow(/identity DH key/);
+  });
+
   it("rejects malformed key lengths", async () => {
     const spk = await makeSignedPair(bob, 8);
 
@@ -195,6 +242,7 @@ describe("X3DH", () => {
       initiateX3DH(alice, {
         identityKey: bob.signing.publicKey,
         identityDhKey: new Uint8Array(16),
+        identityDhSignature: await signIdentityDhKey(bob),
         signedPrekey: {
           id: spk.id,
           publicKey: spk.pair.publicKey,
@@ -212,6 +260,7 @@ describe("X3DH", () => {
     const initiator = await initiateX3DH(alice, {
       identityKey: bob.signing.publicKey,
       identityDhKey: bob.dh.publicKey,
+      identityDhSignature: await signIdentityDhKey(bob),
       signedPrekey: {
         id: spk.id,
         publicKey: spk.pair.publicKey,
@@ -239,6 +288,7 @@ describe("X3DH", () => {
     const initiator = await initiateX3DH(alice, {
       identityKey: bob.signing.publicKey,
       identityDhKey: bob.dh.publicKey,
+      identityDhSignature: await signIdentityDhKey(bob),
       signedPrekey: {
         id: spk.id,
         publicKey: spk.pair.publicKey,
@@ -264,6 +314,7 @@ describe("X3DH", () => {
     const initiator = await initiateX3DH(alice, {
       identityKey: bob.signing.publicKey,
       identityDhKey: bob.dh.publicKey,
+      identityDhSignature: await signIdentityDhKey(bob),
       signedPrekey: {
         id: spk.id,
         publicKey: spk.pair.publicKey,

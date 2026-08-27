@@ -12,6 +12,7 @@ import {
   type SignedPrekey,
   createAuthProof,
   fromBase64,
+  signIdentityDhKey,
 } from "../crypto/identity";
 import type { PrekeyBundle } from "../crypto/x3dh";
 
@@ -137,6 +138,7 @@ export class ApiClient {
       {
         identity_key: b64(identity.signing.publicKey),
         identity_dh_key: b64(identity.dh.publicKey),
+        identity_dh_signature: b64(await signIdentityDhKey(identity)),
         signed_prekey: {
           id: signedPrekey.id,
           public_key: b64(signedPrekey.publicKey),
@@ -190,6 +192,7 @@ export class ApiClient {
     const body = await this.request<{
       identity_key: string;
       identity_dh_key: string;
+      identity_dh_signature: string;
       signed_prekey: { id: number; public_key: string; signature: string };
       one_time_prekey?: { id: number; public_key: string };
     }>("GET", `/v1/accounts/${encodeURIComponent(accountId)}/bundle`, undefined, true);
@@ -197,6 +200,7 @@ export class ApiClient {
     return {
       identityKey: fromBase64(body.identity_key),
       identityDhKey: fromBase64(body.identity_dh_key),
+      identityDhSignature: fromBase64(body.identity_dh_signature ?? ""),
       signedPrekey: {
         id: body.signed_prekey.id,
         publicKey: fromBase64(body.signed_prekey.public_key),

@@ -24,6 +24,7 @@ export class FakeNetwork {
     {
       identityKey: Uint8Array;
       identityDhKey: Uint8Array;
+      identityDhSignature: Uint8Array;
       signedPrekey: { id: number; publicKey: Uint8Array; signature: Uint8Array };
       oneTimePrekeys: { id: number; publicKey: Uint8Array }[];
     }
@@ -48,9 +49,11 @@ export class FakeNetwork {
       ) => {
         const { accountId: derive } = await import("../crypto/identity");
         const id = await derive(identity.signing.publicKey);
+        const { signIdentityDhKey } = await import("../crypto/identity");
         net.accounts.set(id, {
           identityKey: identity.signing.publicKey,
           identityDhKey: identity.dh.publicKey,
+          identityDhSignature: await signIdentityDhKey(identity),
           signedPrekey,
           oneTimePrekeys: [...oneTimePrekeys],
         });
@@ -66,6 +69,7 @@ export class FakeNetwork {
         return {
           identityKey: account.identityKey,
           identityDhKey: account.identityDhKey,
+          identityDhSignature: account.identityDhSignature,
           signedPrekey: account.signedPrekey,
           oneTimePrekey: otk,
         };

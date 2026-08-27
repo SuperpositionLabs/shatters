@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { generateIdentity, createSignedPrekey, sodium } from "../crypto/identity";
+import {
+  createSignedPrekey,
+  generateIdentity,
+  signIdentityDhKey,
+  sodium,
+} from "../crypto/identity";
 import { ApiClient, ApiError, NetworkError, type FetchLike } from "./api";
 
 interface Recorded {
@@ -178,6 +183,7 @@ describe("ApiClient", () => {
       jsonResponse({
         identity_key: enc(identity.signing.publicKey),
         identity_dh_key: enc(identity.dh.publicKey),
+        identity_dh_signature: enc(await signIdentityDhKey(identity)),
         signed_prekey: {
           id: 3,
           public_key: enc(spk.publicKey),
@@ -207,6 +213,7 @@ describe("ApiClient", () => {
       jsonResponse({
         identity_key: enc(identity.signing.publicKey),
         identity_dh_key: enc(identity.dh.publicKey),
+        identity_dh_signature: enc(await signIdentityDhKey(identity)),
         signed_prekey: {
           id: 1,
           public_key: enc(spk.publicKey),
