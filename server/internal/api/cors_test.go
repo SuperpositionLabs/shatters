@@ -243,3 +243,23 @@ func TestWebSocketOriginSharesTheAllowlist(t *testing.T) {
 		t.Error("an unlisted origin was accepted by the socket")
 	}
 }
+
+func TestSameOriginRejectsDegenerateInput(t *testing.T) {
+	// A request can arrive without a Host under HTTP/1.0. Matching that
+	// against a bare scheme would make "http://" same-origin and hand it CORS
+	// headers, and the WebSocket handshake reads the same function. Found by
+	// fuzzing.
+	cases := []struct{ origin, host string }{
+		{"http://", ""},
+		{"https://", ""},
+		{"http://", "api.example"},
+		{"https://api.example", ""},
+		{"", ""},
+	}
+
+	for _, c := range cases {
+		if sameOrigin(c.origin, c.host) {
+			t.Errorf("sameOrigin(%q, %q) = true, want false", c.origin, c.host)
+		}
+	}
+}

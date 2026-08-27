@@ -136,6 +136,45 @@ jobs:
         if: failure()
         run: docker logs server
 
+  # A bounded fuzz pass on every pull request. A fuzzer that only runs when
+  # somebody remembers is not a gate, and every decoder here parses bytes an
+  # attacker chooses before anything has been authenticated.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: fuzz the decoders
+        working-directory: server
+        env:
+          # Overrides the workflow-level value. These targets are pure
+          # decoders and need no database, and the api package's TestMain
+          # aborts when DATABASE_URL is set but nothing is listening.
+          DATABASE_URL: ""
+        run: |
+          set -e
+          targets=$(grep -rho '^func Fuzz[A-Za-z0-9_]*' --include='*_test.go' . \
+            | sed 's/^func //' | sort -u)
+          if [ -z "$targets" ]; then
+            echo "no fuzz targets found; the discovery pattern has drifted"
+            exit 1
+          fi
+          for target in $targets; do
+            pkg=$(grep -rl "func ${target}(" --include='*_test.go' . | head -1 | xargs dirname)
+            echo "== $target ($pkg)"
+            go test "./$pkg" -run "^${target}$" -fuzz "^${target}$" -fuzztime=20s
+          done
+      - name: upload any crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus
+          path: server/**/testdata/fuzz/**
+          if-no-files-found: ignore
+
   web:
     runs-on: ubuntu-latest
     defaults:

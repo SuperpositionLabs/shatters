@@ -187,19 +187,19 @@ func TestSweepDeletesInBatches(t *testing.T) {
 		}
 	}
 
-	result, err := Sweep(t.Context(), pool)
-	if err != nil {
+	if _, err := Sweep(t.Context(), pool); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
 
 	// A first run against a neglected instance must not become one enormous
-	// transaction, but it must still finish the job.
-	if result.Envelopes < total {
-		t.Errorf("swept %d envelopes, want at least %d", result.Envelopes, total)
-	}
+	// transaction, but it must still finish the job. Asserted by what remains
+	// rather than by the reported total: `go test ./...` runs packages in
+	// parallel against one database, and the api suite sweeps it too, so the
+	// count is not this test's to predict. A sweep that stopped after a single
+	// batch would leave the remainder behind, which this still catches.
 	if n := countWhere(t, pool,
 		`SELECT count(*) FROM envelopes WHERE recipient_id = $1`, recipient[:]); n != 0 {
-		t.Errorf("%d expired envelopes left after a batched sweep", n)
+		t.Errorf("%d of %d expired envelopes left after a batched sweep", n, total)
 	}
 }
 

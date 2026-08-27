@@ -91,3 +91,38 @@ func TestVerifyAuthProof(t *testing.T) {
 		t.Error("tampered proof accepted")
 	}
 }
+
+func TestVerifyRejectsMalformedInputWithoutPanicking(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	nonce, _ := RandomNonce(32)
+	good := ed25519.Sign(priv, append([]byte(domainAuth), nonce...))
+
+	// ed25519.Verify panics on a wrong-sized public key. Every caller happens
+	// to validate first today, but a verification routine that crashes on bad
+	// input is one refactor away from being a denial of service. Found by
+	// fuzzing.
+	cases := []struct {
+		name string
+		key  []byte
+		sig  []byte
+	}{
+		{"empty key", nil, good},
+		{"short key", pub[:31], good},
+		{"long key", append(bytes.Clone(pub), 0), good},
+		{"empty signature", pub, nil},
+		{"short signature", pub, good[:63]},
+		{"long signature", pub, append(bytes.Clone(good), 0)},
+		{"both empty", nil, nil},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if err := VerifyAuthProof(c.key, nonce, c.sig); err == nil {
+				t.Error("malformed input was accepted")
+			}
+		})
+	}
+}

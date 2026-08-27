@@ -97,3 +97,34 @@ func TestAccountIDKnownVector(t *testing.T) {
 	}
 }
 
+func TestVerifySignedPrekeyRejectsMalformedInputWithoutPanicking(t *testing.T) {
+	pub, priv := testIdentity(t)
+	spk := make([]byte, PublicKeySize)
+	if _, err := rand.Read(spk); err != nil {
+		t.Fatalf("rand: %v", err)
+	}
+	msg := append([]byte("shatters-spk-v1"), spk...)
+	msg = binary.BigEndian.AppendUint32(msg, 1)
+	good := ed25519.Sign(priv, msg)
+
+	// Same latent panic as VerifyAuthProof: a wrong-sized public key crashes
+	// ed25519.Verify. Found by fuzzing.
+	cases := []struct {
+		name string
+		key  []byte
+		sig  []byte
+	}{
+		{"empty key", nil, good},
+		{"short key", pub[:31], good},
+		{"empty signature", pub, nil},
+		{"short signature", pub, good[:63]},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if err := VerifySignedPrekey(c.key, spk, c.sig, 1); err == nil {
+				t.Error("malformed input was accepted")
+			}
+		})
+	}
+}

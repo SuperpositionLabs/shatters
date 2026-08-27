@@ -86,9 +86,17 @@ func (s *Server) cors(next http.Handler) http.Handler {
 // the same reason the rate limiter ignores forwarding headers: it is
 // attacker-controlled whenever the server is reachable directly.
 func sameOrigin(origin, host string) bool {
+	// An empty host means a request that arrived without one, which HTTP/1.0
+	// permits. Matching it against a bare "http://" would make a degenerate
+	// origin same-origin and hand it CORS headers - and the WebSocket
+	// handshake reads the same function. Found by fuzzing.
+	if host == "" {
+		return false
+	}
+
 	for _, prefix := range []string{"http://", "https://"} {
 		if rest, ok := strings.CutPrefix(origin, prefix); ok {
-			return rest == host
+			return rest != "" && rest == host
 		}
 	}
 	return false
