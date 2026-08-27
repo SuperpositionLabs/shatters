@@ -13,6 +13,7 @@ import (
 	"github.com/SuperpositionLabs/shatters/server/internal/api"
 	"github.com/SuperpositionLabs/shatters/server/internal/config"
 	"github.com/SuperpositionLabs/shatters/server/internal/db"
+	"github.com/SuperpositionLabs/shatters/server/internal/maintenance"
 	"github.com/SuperpositionLabs/shatters/server/migrations"
 )
 
@@ -40,6 +41,12 @@ func main() {
 		slog.Error("schema migration failed", "err", err)
 		os.Exit(1)
 	}
+
+	// Housekeeping runs beside the server and stops with it. Cancelling the
+	// signal context is what ends it, so shutdown never waits on a sweep but
+	// never leaves one running either.
+	sweeper := maintenance.New(pool, cfg.SweepInterval)
+	go sweeper.Run(ctx)
 
 	service := api.NewServer(pool,
 		api.WithRateLimits(cfg.RateLimitPerMinute, cfg.RateLimitBurst),
