@@ -26,6 +26,10 @@ services:
       # when unset; raise it for a busy instance, lower it for a private one.
       RATE_LIMIT_PER_MINUTE: "60"
       RATE_LIMIT_BURST: "20"
+      # Browser origins allowed to call from elsewhere. Empty means
+      # same-origin only, which is the default deployment. `next dev` runs on
+      # 3000, so it is listed here for local development.
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000"
     ports:
       - "8080:8080"
     depends_on:

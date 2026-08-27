@@ -17,6 +17,7 @@ type Server struct {
 	pool    *pgxpool.Pool
 	limiter *ratelimit.Limiter
 	hub     *hub
+	origins allowedOrigins
 }
 
 // Option customizes the server for tests and future deployments.
@@ -25,6 +26,12 @@ type Option func(*Server)
 // WithRateLimiter overrides the default per-IP limiter.
 func WithRateLimiter(l *ratelimit.Limiter) Option {
 	return func(s *Server) { s.limiter = l }
+}
+
+// WithAllowedOrigins permits these browser origins to call from elsewhere.
+// Empty keeps the default of same-origin only.
+func WithAllowedOrigins(origins []string) Option {
+	return func(s *Server) { s.origins = allowedOrigins(origins) }
 }
 
 // WithRateLimits sets the per-IP allowance from configuration.
@@ -72,6 +79,9 @@ func NewServer(pool *pgxpool.Pool, opts ...Option) *Service {
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
+	// Ahead of everything, so preflight is answered before rate limiting or
+	// authentication can reject it.
+	r.Use(s.cors)
 
 	r.Get("/healthz", s.handleHealth)
 

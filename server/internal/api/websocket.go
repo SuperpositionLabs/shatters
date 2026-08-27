@@ -36,33 +36,25 @@ const (
 	maxClientFrame = 64 * 1024
 )
 
-// upgrader rejects cross-origin handshakes by default.
+// newUpgrader builds an upgrader bound to the server's origin allowlist.
 //
-// The browser same-origin policy does not apply to WebSockets, so without an
-// origin check any site could open an authenticated socket in a visitor's
-// browser. Only same-origin and non-browser (originless) clients are allowed.
-var upgrader = websocket.Upgrader{
-	HandshakeTimeout: 10 * time.Second,
-	ReadBufferSize:   1024,
-	WriteBufferSize:  1024,
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true // native clients send no Origin
-		}
-		return originMatchesHost(origin, r.Host)
-	},
-}
-
-// originMatchesHost reports whether an Origin header refers to the same host
-// the request was addressed to.
-func originMatchesHost(origin, host string) bool {
-	for _, prefix := range []string{"http://", "https://"} {
-		if len(origin) > len(prefix) && origin[:len(prefix)] == prefix {
-			return origin[len(prefix):] == host
-		}
+// The browser same-origin policy does not apply to WebSockets, so without this
+// check any site could open an authenticated socket in a visitor's browser.
+// The list is the same one CORS uses: two lists would drift, and the socket is
+// the more dangerous of the two to get wrong.
+func newUpgrader(origins allowedOrigins) websocket.Upgrader {
+	return websocket.Upgrader{
+		HandshakeTimeout: 10 * time.Second,
+		ReadBufferSize:   1024,
+		WriteBufferSize:  1024,
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // native clients send no Origin
+			}
+			return sameOrigin(origin, r.Host) || origins.allows(origin)
+		},
 	}
-	return false
 }
 
 // clientMessage is the small control vocabulary a client may send.
@@ -144,6 +136,7 @@ func (c *wsConn) close() {
 // headers. Instead the socket authenticates with its first frame, so the token
 // only ever appears in a message body.
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	upgrader := newUpgrader(s.origins)
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		// Upgrade already wrote a response.

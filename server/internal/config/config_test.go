@@ -95,3 +95,56 @@ func TestLoadRequiresDatabaseURL(t *testing.T) {
 		t.Error("Load() with empty DATABASE_URL error = nil, want error")
 	}
 }
+
+func TestLoadParsesAllowedOrigins(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "https://app.example, http://localhost:3000")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	want := []string{"https://app.example", "http://localhost:3000"}
+	if len(cfg.AllowedOrigins) != len(want) {
+		t.Fatalf("AllowedOrigins = %v, want %v", cfg.AllowedOrigins, want)
+	}
+	for i := range want {
+		if cfg.AllowedOrigins[i] != want[i] {
+			t.Errorf("AllowedOrigins[%d] = %q, want %q", i, cfg.AllowedOrigins[i], want[i])
+		}
+	}
+}
+
+func TestLoadDefaultsToNoAllowedOrigins(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	// Same-origin only unless an operator opts in. A permissive default would
+	// let any site open an authenticated socket in a visitor's browser.
+	if len(cfg.AllowedOrigins) != 0 {
+		t.Errorf("AllowedOrigins = %v, want empty", cfg.AllowedOrigins)
+	}
+}
+
+func TestLoadRejectsBadOrigins(t *testing.T) {
+	cases := []string{
+		"*",                    // meaningless with credentials; must not mislead
+		"app.example",          // no scheme
+		"https://app.example/", // an Origin header never has a trailing slash
+		"ftp://app.example",
+	}
+
+	for _, value := range cases {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://localhost/test")
+			t.Setenv("CORS_ALLOWED_ORIGINS", value)
+
+			if _, err := Load(); err == nil {
+				t.Errorf("Load(CORS_ALLOWED_ORIGINS=%q) error = nil, want error", value)
+			}
+		})
+	}
+}

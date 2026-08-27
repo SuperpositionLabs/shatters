@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Default rate limits for the unauthenticated endpoints. Unchanged from the
@@ -26,6 +27,9 @@ type Config struct {
 	RateLimitPerMinute int
 	// RateLimitBurst is how many requests a single IP may make back to back.
 	RateLimitBurst int
+	// AllowedOrigins are the browser origins permitted to call the API from
+	// another origin. Empty means same-origin only.
+	AllowedOrigins []string
 }
 
 // Load reads configuration from the environment and validates it.
@@ -36,6 +40,7 @@ type Config struct {
 //	DATABASE_URL          - PostgreSQL connection string (required)
 //	RATE_LIMIT_PER_MINUTE - per-IP sustained rate (default 60)
 //	RATE_LIMIT_BURST      - per-IP burst allowance (default 20)
+//	CORS_ALLOWED_ORIGINS  - comma-separated browser origins (default: none)
 func Load() (Config, error) {
 	port := envOr("PORT", "8080")
 	n, err := strconv.Atoi(port)
@@ -57,7 +62,13 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	origins, err := originList("CORS_ALLOWED_ORIGINS")
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
+		AllowedOrigins:     origins,
 		Addr:               fmt.Sprintf(":%d", n),
 		DatabaseURL:        dbURL,
 		RateLimitPerMinute: perMinute,
@@ -92,4 +103,37 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// originList parses a comma-separated allowlist of browser origins.
+//
+// Each entry must be a bare scheme://host[:port]. A wildcard is rejected
+// rather than honoured: with credentials in play browsers ignore "*" anyway,
+// so accepting it would only mislead an operator into thinking it worked.
+func originList(key string) ([]string, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil, nil
+	}
+
+	var origins []string
+	for _, part := range strings.Split(raw, ",") {
+		origin := strings.TrimSpace(part)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			return nil, fmt.Errorf("config: %s does not accept \"*\"; list origins explicitly", key)
+		}
+		if !strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://") {
+			return nil, fmt.Errorf("config: %s entry %q must start with http:// or https://", key, origin)
+		}
+		if strings.HasSuffix(origin, "/") {
+			// An Origin header never carries a trailing slash, so this would
+			// silently never match.
+			return nil, fmt.Errorf("config: %s entry %q must not end with /", key, origin)
+		}
+		origins = append(origins, origin)
+	}
+	return origins, nil
 }
