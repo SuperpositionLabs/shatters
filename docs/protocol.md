@@ -243,6 +243,35 @@ could otherwise inject messages into it, or add themselves to it. Removed
 members are told they were removed, so they stop delivering locally rather than
 waiting to notice the silence.
 
+## 9b. Identity verification
+
+Every key in a prekey bundle is signed by the identity key (§4, §6), but that
+only proves the bundle is internally consistent. It cannot prove the identity
+key *itself* is the right one: the server chooses which key to serve for an
+account id, and a client that has never seen the real one has nothing to
+compare against.
+
+**Safety number** = 60 digits, derived from both identity keys:
+
+```
+half(k)  = 30 digits from SHA-256 iterated 5200 times over
+           ("shatters-safety-v1" || k), with k folded in each round
+number   = sorted(half(IKa), half(IKb)) concatenated
+```
+
+Sorted rather than ordered by who is asking, so both devices show the same
+string — a number that differed by whose screen it was on would be useless for
+the comparison it exists to support. Digits rather than hex because people read
+these aloud, and `a`–`f` is ambiguous over a phone line.
+
+**Key-change warning.** More people will act on this than will ever compare a
+fingerprint. A client records the identity key each conversation was
+established with; if it changes, the conversation is flagged and any existing
+verification is dropped. That is either a peer who reinstalled or an operator
+substituting a key, and only the user can tell which. Verification is per-key
+for the same reason: carrying an old mark onto a new key would defeat the point
+of having verified anything.
+
 ## 10. Metadata policy
 
 Stored by the server (exhaustive list):

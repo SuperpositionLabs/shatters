@@ -5,6 +5,8 @@
  * the content protocol into one object a UI can drive. Deliberately free of
  * React: this is the model, and it must be testable without a DOM.
  */
+import { decodeMessage } from "../crypto/envelope";
+import { safetyNumber } from "../crypto/safety";
 import {
   AttachmentAssembler,
   type AttachmentChunkContent,
@@ -314,10 +316,78 @@ export class ChatClient {
     // No session yet: fetch the peer's bundle and run X3DH. The bundle's
     // signed prekey is verified inside startSession.
     const bundle = await this.api.fetchBundle(conversationId);
+    await this.recordPeerIdentity(conversationId, bundle.identityKey);
     const session = await startSession(this.requireIdentity(), bundle);
     this.sessions.set(conversationId, session);
     await this.store.saveSession(conversationId, session);
     return session;
+  }
+
+  /**
+   * Notes which identity key a conversation is talking to, and raises a
+   * warning when it changes.
+   *
+   * A changed key is either a peer who reinstalled or an operator substituting
+   * one, and only the user can tell which. Almost nobody compares safety
+   * numbers; nearly everybody notices a warning.
+   */
+  private async recordPeerIdentity(
+    conversationId: string,
+    identityKey: Uint8Array,
+  ): Promise<void> {
+    const encoded = encodeB64(identityKey);
+    const existing = await this.store.getConversation(conversationId);
+
+    if (existing?.peerIdentityKey && existing.peerIdentityKey !== encoded) {
+      await this.store.upsertConversation(conversationId, {
+        peerIdentityKey: encoded,
+        identityChangedFrom: existing.peerIdentityKey,
+        // Verification does not survive a key change; the new key is
+        // unverified until someone checks it.
+        verifiedIdentityKey:
+          existing.verifiedIdentityKey === encoded
+            ? existing.verifiedIdentityKey
+            : undefined,
+      });
+      this.events.onConversationsChanged?.();
+      return;
+    }
+
+    if (!existing?.peerIdentityKey) {
+      await this.store.upsertConversation(conversationId, {
+        peerIdentityKey: encoded,
+      });
+    }
+  }
+
+  /** The number two people compare out of band. */
+  async safetyNumberFor(conversationId: string): Promise<string | undefined> {
+    const conversation = await this.store.getConversation(conversationId);
+    if (!conversation?.peerIdentityKey) return undefined;
+
+    return safetyNumber(
+      this.requireIdentity().signing.publicKey,
+      decodeB64(conversation.peerIdentityKey),
+    );
+  }
+
+  /** Marks the current peer key verified, or clears the mark. */
+  async setVerified(conversationId: string, verified: boolean): Promise<void> {
+    const conversation = await this.store.getConversation(conversationId);
+    if (!conversation?.peerIdentityKey) return;
+
+    await this.store.upsertConversation(conversationId, {
+      verifiedIdentityKey: verified ? conversation.peerIdentityKey : undefined,
+    });
+    this.events.onConversationsChanged?.();
+  }
+
+  /** Dismisses a key-change warning the user has seen. */
+  async acknowledgeIdentityChange(conversationId: string): Promise<void> {
+    await this.store.upsertConversation(conversationId, {
+      identityChangedFrom: undefined,
+    });
+    this.events.onConversationsChanged?.();
   }
 
   private async persistSession(conversationId: string): Promise<void> {
@@ -821,6 +891,13 @@ export class ChatClient {
       new VaultPrekeyStore(this, stored),
       envelope.payload,
     );
+
+    // The handshake carries the initiator's identity key, so an inbound
+    // session is recorded and checked exactly like an outbound one.
+    const header = decodeMessage(envelope.payload).x3dh;
+    if (header) {
+      await this.recordPeerIdentity(conversationId, header.identityKey);
+    }
     this.sessions.set(conversationId, accepted.session);
     await this.store.saveSession(conversationId, accepted.session);
 

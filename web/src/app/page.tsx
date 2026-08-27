@@ -118,6 +118,9 @@ export default function Home() {
           onDownload={(message) => void download(message)}
           onReact={(id, emoji, active) => void actions.react(id, emoji, active)}
           selfId={state.accountId}
+          loadSafetyNumber={actions.safetyNumber}
+          onSetVerified={(id, verified) => void actions.setVerified(id, verified)}
+          onAcknowledgeChange={(id) => void actions.acknowledgeIdentityChange(id)}
         />
       </div>
 

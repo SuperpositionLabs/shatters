@@ -7,6 +7,7 @@ import { searchMessages } from "../lib/client/search";
 import type { Conversation, StoredMessage } from "../lib/store/types";
 import { Composer } from "./Composer";
 import { MessageBubble } from "./MessageBubble";
+import { SafetyPanel } from "./SafetyPanel";
 
 interface Props {
   conversation?: Conversation;
@@ -23,6 +24,9 @@ interface Props {
   onDownload: (message: StoredMessage) => void;
   onReact?: (id: string, emoji: string, active: boolean) => void;
   selfId?: string;
+  loadSafetyNumber?: (id: string) => Promise<string | undefined>;
+  onSetVerified?: (id: string, verified: boolean) => void;
+  onAcknowledgeChange?: (id: string) => void;
 }
 
 export function ChatView({
@@ -40,6 +44,9 @@ export function ChatView({
   onDownload,
   onReact,
   selfId,
+  loadSafetyNumber,
+  onSetVerified,
+  onAcknowledgeChange,
 }: Props) {
   const bottom = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
@@ -108,6 +115,15 @@ export function ChatView({
           </button>
         )}
       </header>
+
+      {!conversation.isGroup && loadSafetyNumber && onSetVerified && onAcknowledgeChange && (
+        <SafetyPanel
+          conversation={conversation}
+          loadSafetyNumber={loadSafetyNumber}
+          onSetVerified={onSetVerified}
+          onAcknowledgeChange={onAcknowledgeChange}
+        />
+      )}
 
       <div className="chat__scroll">
         {query.trim() && visible.length === 0 && (
