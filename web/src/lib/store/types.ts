@@ -66,4 +66,21 @@ export interface Conversation {
   typingUntil?: number;
   /** True when this conversation is a group rather than a direct chat. */
   isGroup?: boolean;
+  /** base64 of the peer identity key this conversation was established with. */
+  peerIdentityKey?: string;
+  /**
+   * The identity key the user marked verified.
+   *
+   * Stored as the key rather than a boolean: a contact who reinstalls has a
+   * genuinely new key, and carrying an old verification over to it would
+   * defeat the point of having verified anything.
+   */
+  verifiedIdentityKey?: string;
+  /**
+   * A previously known identity key that has since changed, kept until the
+   * user acknowledges it.
+   *
+   * A warning that appears once and vanishes is a warning nobody sees.
+   */
+  identityChangedFrom?: string;
 }

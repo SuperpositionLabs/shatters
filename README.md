@@ -91,26 +91,56 @@ NEXT_PUBLIC_SHATTERS_API=http://localhost:8080
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
-Run the server test suite:
+Run the test suites:
 
 ```sh
-cd server
-go test ./...
+cd server && go test ./...
 ```
+
+```sh
+cd web && npm test
+```
+
+## Features
+
+| | |
+|---|---|
+| **Messaging** | Direct and group conversations, replies, edits, deletions, emoji reactions |
+| **Delivery** | Live WebSocket push, offline queue with a 30-day TTL, delivery and read receipts, typing indicators |
+| **Files** | Attachments of any size, chunked to fit the envelope cap |
+| **History** | Encrypted on-device storage, survives reload, searchable without an index |
+| **Identity** | No usernames, e-mails or passwords — an account *is* a keypair |
+| **Verification** | Safety numbers and an automatic warning when a contact's key changes |
+| **Notifications** | Desktop notifications that reveal nothing by default |
 
 ## Status
 
-v2 development follows milestone-based git-flow. Current state:
+All milestones complete. v2 development followed milestone-based git-flow:
 
 | Milestone | Scope | State |
 |---|---|---|
 | M0 – Foundation | Monorepo, CI, migrations | ✅ done |
 | M1 – Identities | Registration, prekeys, key directory | ✅ done |
-| M2 – E2EE Sessions | X3DH + Double Ratchet | 🚧 crypto done; session persistence open |
-| M3 – Transport | Authenticated WebSocket, offline queue | 🚧 server done; client transport open |
-| M4 – Encrypted Persistence | Client-side history | ⬜ |
-| M5 – Hardening | Rate limiting, fuzzing, audits | ⬜ |
-| M6 – Deploy & Docs | Release image, diagrams | ⬜ |
+| M2 – E2EE Sessions | X3DH + Double Ratchet | ✅ done |
+| M3 – Transport | Authenticated WebSocket, offline queue | ✅ done |
+| M4 – Encrypted Persistence | Client-side history | ✅ done |
+| M5 – Hardening | Rate limiting, fuzzing, audits | ✅ done |
+| M6 – Deploy & Docs | Release image, documentation | ✅ done |
+
+### What this is not
+
+Being explicit is more useful than a feature list that quietly omits things.
+
+- **No voice or video.** Calls need WebRTC signalling and a TURN server, which
+  is a different product with a different metadata profile.
+- **No multi-device.** One account is one device. Linking a second would need
+  the identity key to leave the device it was generated on, which is the one
+  thing this design refuses.
+- **No account recovery.** Forgetting the passphrase loses the history, and
+  losing the device loses the account. That is what "no third parties" costs.
+- **Not independently audited.** The cryptography follows the Signal
+  specifications and uses only libsodium and the Go standard library, but no
+  external review has been done.
 
 ## Contributing
 

@@ -8,7 +8,7 @@ Status: draft. Extracted from the legacy relay/sdk design and adapted to the Go 
 |---|---|
 | Message plaintext | Highest — never exists outside client memory |
 | Private keys (identity, prekeys, ratchet state) | Highest — never leave the client |
-| Client-local history DB | High — encrypted at rest with Argon2id-derived key (M4) |
+| Client-local history DB | High — encrypted at rest with an Argon2id-derived key |
 | Session tokens | Medium — grant API access as the identity; stored hashed server-side |
 | Public key material | Public by definition; integrity matters, confidentiality does not |
 | Envelope ciphertext blobs | Confidentiality guaranteed by AEAD; metadata value analyzed in §5 |
@@ -50,14 +50,14 @@ What A2 **cannot** do (and which property blocks it):
 
 Residual risks accepted and documented:
 - **Metadata exposure**: the server learns who talks to whom (account IDs), when, and envelope sizes/timing. §5 minimizes but does not eliminate this.
-- **Key substitution** (server serves attacker's prekeys to new sessions): mitigated in M5 by optional safety-number/key-fingerprint verification out-of-band; documented as UX responsibility.
+- **Key substitution** (server serves attacker's keys to new sessions): partially mitigated. Every key in a bundle is signed by the identity key and verified by the client (protocol §4, §6), so the operator cannot substitute a prekey without also substituting the identity key. Substituting the *identity* key remains possible against a first contact, and is addressed by safety numbers and a key-change warning (§9b). The warning is the effective control: it fires automatically, whereas comparing a fingerprint requires the user to do something. Neither helps someone who ignores both, which is why this is listed as reduced rather than eliminated.
 - **Replay of delivery**: envelopes carry client-chosen message counters inside the ratchet; duplicates are dropped by clients.
 
 ### A3 — Active MITM without server compromise
 Blocked by TLS (self-hosted deployments control their own certs). Certificate pinning existed in legacy SDK; v2 relies on standard Web PKI plus the fact that even a TLS-breaking MITM still cannot read E2EE content — it can only DoS.
 
 ### A4 — Endpoint compromise (malware on user device)
-Out of scope. No messenger survives this. Local storage encryption (M4) narrows the window for *at-rest* theft of a powered-off device: ratchet state and history are sealed under an Argon2id key derived from the user passphrase.
+Out of scope. No messenger survives this. Local storage encryption narrows the window for *at-rest* theft of a powered-off device: ratchet state and history are sealed under an Argon2id key derived from the user passphrase.
 
 ## 4. Security goals (inherited from legacy design)
 
@@ -100,3 +100,30 @@ Explicitly rejected: IP logging, analytics, third-party scripts/CDNs in the web 
 | Protocol bugs (ratchet misuse) | Interop test vectors between TS client implementation and published Signal spec behavior (M2); fuzzing of envelope parsing (M5) |
 | Token/auth weaknesses | Short TTLs, hashed-at-rest tokens, constant-time comparisons (`crypto/subtle`), per-IP limits (M1/M5) |
 | Dependency vulnerabilities | govulncheck on every push; Dependabot-equivalent review cadence (M5 audit issue) |
+
+## 6. Notes added after implementation
+
+Recording what the build changed about the analysis, rather than leaving the
+document describing an earlier design.
+
+- **Group membership is client-side.** The server has no notion of a group: no
+  table, no membership, no way to tell that several envelopes belong to one
+  message. The cost is one envelope per member (protocol §9a), which is
+  observable to A2 as fan-out timing and volume — a member count, not a
+  membership list.
+- **Expired data is deleted rather than merely hidden.** Envelopes,
+  authentication challenges and session tokens are swept on a schedule.
+  Previously they were excluded from reads but retained indefinitely, which
+  left recoverable ciphertext on the operator's disk long after it stopped
+  being useful.
+- **Notifications leave the vault.** An OS notification outlives the
+  application's own lock and sits where anyone holding the device can read it.
+  The default reveals neither sender nor content; anything more is opt-in.
+- **Search builds no index.** Filtering runs over decrypted history in memory.
+  An index would have to be stored, and an unencrypted index of message text
+  would undo the vault entirely.
+- **A1 sees more with a single-user instance.** On a self-hosted deployment
+  with few accounts, traffic analysis is far more informative than the
+  metadata table suggests: an observer who knows there is one user learns that
+  user's activity pattern directly. Nothing in the design fixes this; it is a
+  property of running your own server.

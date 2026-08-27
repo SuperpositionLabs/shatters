@@ -498,6 +498,64 @@ body {
   color: var(--fg-muted);
 }
 
+.safety {
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+}
+
+.safety__warning {
+  background: rgba(242, 112, 122, 0.12);
+  border: 1px solid rgba(242, 112, 122, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.safety__warning p {
+  margin: 0 0 0.5rem;
+  font-size: 0.82rem;
+}
+
+.safety__toggle {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.safety__detail {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.safety__hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+}
+
+.safety__number {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  line-height: 1.9;
+  word-spacing: 0.35rem;
+  max-width: 22rem;
+}
+
+.conversation__verified {
+  color: var(--success);
+  margin-left: 0.3rem;
+  font-size: 0.8rem;
+}
+
+.conversation__warn {
+  color: var(--danger);
+  margin-left: 0.3rem;
+  font-weight: 700;
+}
+
 .chat__scroll {
   flex: 1;
   overflow-y: auto;

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChatView } from "./ChatView";
 import { ConversationList } from "./ConversationList";
+import { SafetyPanel } from "./SafetyPanel";
 import type { StoredMessage } from "../lib/store/types";
 
 afterEach(cleanup);
@@ -316,5 +317,189 @@ describe("reactions and search in the chat view", () => {
     );
     // An empty list with no explanation reads as a broken conversation.
     expect(screen.getByText(/no messages match/i)).toBeDefined();
+  });
+});
+
+describe("ChatView hook stability", () => {
+  const conversation = {
+    id: "c1",
+    displayName: "Alice",
+    lastActivity: 1,
+    unreadCount: 0,
+  };
+
+  function props(overrides = {}) {
+    return {
+      conversation: undefined,
+      messages: [],
+      peerTyping: false,
+      onBack: noop,
+      onSend: noop,
+      onAttach: noop,
+      onTyping: noop,
+      onRetry: noop,
+      onDelete: noop,
+      onEdit: noop,
+      onDownload: noop,
+      ...overrides,
+    };
+  }
+
+  it("survives going from no conversation to an open one", () => {
+    // The search filter was memoised below the early return for "nothing
+    // selected", so opening a conversation changed the hook count and React
+    // tore the tree down. Found by driving the built app in a browser; every
+    // component test passed throughout, because none of them made this
+    // transition.
+    const { rerender } = render(<ChatView {...props()} />);
+    expect(screen.getByText(/select a conversation/i)).toBeDefined();
+
+    rerender(
+      <ChatView
+        {...props({
+          conversation,
+          messages: [
+            {
+              id: "m1",
+              conversationId: "c1",
+              direction: "incoming" as const,
+              body: "hello",
+              timestamp: Date.UTC(2026, 7, 27, 12, 0),
+              status: "delivered" as const,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("hello")).toBeDefined();
+    expect(screen.getByLabelText("Message")).toBeDefined();
+  });
+
+  it("survives closing a conversation again", () => {
+    const { rerender } = render(
+      <ChatView {...props({ conversation, messages: [] })} />,
+    );
+    rerender(<ChatView {...props()} />);
+
+    expect(screen.getByText(/select a conversation/i)).toBeDefined();
+  });
+});
+
+describe("SafetyPanel", () => {
+  const base = {
+    id: "c1",
+    displayName: "Alice",
+    lastActivity: 1,
+    unreadCount: 0,
+    peerIdentityKey: "KEY-A",
+  };
+
+  const digits = "1".repeat(60);
+  const load = async () => digits;
+
+  it("warns about a changed key without being asked", () => {
+    render(
+      <SafetyPanel
+        conversation={{ ...base, identityChangedFrom: "KEY-OLD" }}
+        loadSafetyNumber={load}
+        onSetVerified={noop}
+        onAcknowledgeChange={noop}
+      />,
+    );
+
+    // The one thing here someone needs to see even if they never think about
+    // key material.
+    expect(screen.getByRole("alert")).toHaveTextContent(/security key changed/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/intercepting/i);
+  });
+
+  it("shows no warning when nothing changed", () => {
+    render(
+      <SafetyPanel
+        conversation={base}
+        loadSafetyNumber={load}
+        onSetVerified={noop}
+        onAcknowledgeChange={noop}
+      />,
+    );
+    // A warning that fires on ordinary use gets dismissed without reading.
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("acknowledges the warning", async () => {
+    const onAcknowledgeChange = vi.fn();
+    render(
+      <SafetyPanel
+        conversation={{ ...base, identityChangedFrom: "KEY-OLD" }}
+        loadSafetyNumber={load}
+        onSetVerified={noop}
+        onAcknowledgeChange={onAcknowledgeChange}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /i understand/i }));
+    expect(onAcknowledgeChange).toHaveBeenCalledWith("c1");
+  });
+
+  it("shows the number grouped once opened", async () => {
+    render(
+      <SafetyPanel
+        conversation={base}
+        loadSafetyNumber={load}
+        onSetVerified={noop}
+        onAcknowledgeChange={noop}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Verify" }));
+    const shown = await screen.findByText(/1{5} 1{5}/);
+    // Grouping must not change the value being compared.
+    expect(shown.textContent?.replace(/ /g, "")).toBe(digits);
+  });
+
+  it("reports an already verified key", () => {
+    render(
+      <SafetyPanel
+        conversation={{ ...base, verifiedIdentityKey: "KEY-A" }}
+        loadSafetyNumber={load}
+        onSetVerified={noop}
+        onAcknowledgeChange={noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Verified" })).toBeDefined();
+  });
+
+  it("does not call a stale verification verified", () => {
+    render(
+      <SafetyPanel
+        conversation={{ ...base, verifiedIdentityKey: "KEY-OLD" }}
+        loadSafetyNumber={load}
+        onSetVerified={noop}
+        onAcknowledgeChange={noop}
+      />,
+    );
+
+    // Verification is per-key. A contact who reinstalled has a new key, and
+    // carrying the old mark over would defeat the point.
+    expect(screen.getByRole("button", { name: "Verify" })).toBeDefined();
+  });
+
+  it("marks a key verified", async () => {
+    const onSetVerified = vi.fn();
+    render(
+      <SafetyPanel
+        conversation={base}
+        loadSafetyNumber={load}
+        onSetVerified={onSetVerified}
+        onAcknowledgeChange={noop}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Verify" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /mark as verified/i }),
+    );
+    expect(onSetVerified).toHaveBeenCalledWith("c1", true);
   });
 });

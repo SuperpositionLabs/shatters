@@ -197,6 +197,22 @@ export function ConversationList({
                       </span>
                     )}
                     {conversation.displayName ?? shortAccountId(conversation.id)}
+                    {conversation.verifiedIdentityKey !== undefined &&
+                      conversation.verifiedIdentityKey ===
+                        conversation.peerIdentityKey && (
+                        <span className="conversation__verified" title="Verified">
+                          <span aria-hidden="true">✓</span>
+                          <span className="visually-hidden">Verified</span>
+                        </span>
+                      )}
+                    {conversation.identityChangedFrom && (
+                      <span className="conversation__warn" title="Security key changed">
+                        <span aria-hidden="true">!</span>
+                        <span className="visually-hidden">
+                          Security key changed
+                        </span>
+                      </span>
+                    )}
                   </span>
                   <span className="conversation__preview">
                     {typing.has(conversation.id)

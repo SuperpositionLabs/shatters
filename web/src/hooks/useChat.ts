@@ -411,6 +411,16 @@ export function useChat() {
         // click block without reading, and there is no second chance.
         patch({ notifications: await notifier.current.request() });
       },
+      safetyNumber: async (conversationId: string) =>
+        clientRef.current?.safetyNumberFor(conversationId),
+      setVerified: async (conversationId: string, verified: boolean) => {
+        await clientRef.current?.setVerified(conversationId, verified);
+        await refreshConversations();
+      },
+      acknowledgeIdentityChange: async (conversationId: string) => {
+        await clientRef.current?.acknowledgeIdentityChange(conversationId);
+        await refreshConversations();
+      },
       dismissError: () => patch({ error: undefined }),
     }),
     [
