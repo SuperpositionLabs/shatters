@@ -1,0 +1,3 @@
+# Fuzz corpora and any host-built binary; the image compiles from source.
+**/testdata/fuzz
+*.exe

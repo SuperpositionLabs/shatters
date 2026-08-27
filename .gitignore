@@ -13,6 +13,8 @@ web/next-env.d.ts
 # Environment and local files
 .env
 .env.*
+# The example carries no secrets and must be committed to be useful.
+!deploy/.env.example
 *.local
 
 # Editors / OS

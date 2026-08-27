@@ -18,6 +18,9 @@ type Server struct {
 	limiter *ratelimit.Limiter
 	hub     *hub
 	origins allowedOrigins
+	// How many proxies sit between a client and this process. Zero means the
+	// peer address is the client address.
+	trustedProxies int
 }
 
 // Option customizes the server for tests and future deployments.
@@ -32,6 +35,14 @@ func WithRateLimiter(l *ratelimit.Limiter) Option {
 // Empty keeps the default of same-origin only.
 func WithAllowedOrigins(origins []string) Option {
 	return func(s *Server) { s.origins = allowedOrigins(origins) }
+}
+
+// WithTrustedProxies declares how many reverse proxies sit in front.
+//
+// Only meaningful when they are actually there: a hop count larger than
+// reality lets a caller prepend addresses of their choosing.
+func WithTrustedProxies(count int) Option {
+	return func(s *Server) { s.trustedProxies = count }
 }
 
 // WithRateLimits sets the per-IP allowance from configuration.

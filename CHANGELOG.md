@@ -4,6 +4,42 @@ All notable changes to shatters v2 are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-08-27
+
+Makes shatters deployable. v1.0.0 was complete as an application but could not
+be hosted: `deploy/docker-compose.yml` was a development stack and said so.
+
+### Added
+
+- Production deployment stack: client Dockerfile (Next standalone, non-root),
+  `docker-compose.prod.yml`, and a Caddy front end with automatic certificates.
+  One domain, one proxy, client and API same-origin — so the CORS allowlist
+  stays empty and the WebSocket passes its origin check unconfigured. Only the
+  proxy publishes ports; PostgreSQL is reachable solely over the internal
+  network (#81)
+- `docs/deployment.md`: a VPS from nothing to working, plus backups, updating,
+  and what an operator can still see (#81)
+- `TRUSTED_PROXIES`, declaring how many reverse proxy hops sit in front (#81)
+
+### Fixed
+
+- **Rate limiting was per-instance, not per-user, behind a proxy.** Every
+  request arrives from the proxy, so all users shared one bucket and throttled
+  each other while an abuser stayed indistinguishable from the crowd. The
+  limiter now counts back through `X-Forwarded-For` by the configured hop
+  count, defaulting to `0` because the opposite mistake is worse: trusting the
+  header on a directly reachable server lets anyone pick their own address.
+  Entries a caller prepends sit to the left of where counting starts, so the
+  chain cannot be forged past the trusted hops (#81)
+
+### Security
+
+- No default database password anywhere. The stack refuses to start rather
+  than falling back to a guessable one (#81)
+- The reverse proxy sets HSTS, a content security policy restricting scripts
+  and connections to the instance's own origin, `X-Frame-Options: DENY`,
+  `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff` (#81)
+
 ## [1.0.0] - 2026-08-27
 
 First complete release. Milestones M2 through M6.
@@ -135,6 +171,7 @@ First milestone release of the Go rewrite (M0 - Foundation).
 - chi upgraded to v5.2.2 clearing a govulncheck finding (#7)
 - golang.org/x/text upgraded to v0.41.0 clearing a govulncheck finding (#9)
 
+[1.1.0]: https://github.com/SuperpositionLabs/shatters/releases/tag/v1.1.0
 [1.0.0]: https://github.com/SuperpositionLabs/shatters/releases/tag/v1.0.0
 [0.2.0]: https://github.com/SuperpositionLabs/shatters/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SuperpositionLabs/shatters/releases/tag/v0.1.0
