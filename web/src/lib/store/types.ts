@@ -38,6 +38,13 @@ export interface StoredMessage {
    * other party.
    */
   senderId?: string;
+  /**
+   * Emoji reactions, keyed by emoji, each holding the accounts that reacted.
+   *
+   * Keyed rather than a flat list because the same emoji from two people is
+   * two facts, and the UI shows a count.
+   */
+  reactions?: Record<string, string[]>;
 }
 
 export interface StoredAttachment {

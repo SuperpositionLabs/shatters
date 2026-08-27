@@ -204,6 +204,34 @@ export class ChatStore {
     }));
   }
 
+  /**
+   * Records or clears one account's reaction to a message.
+   *
+   * Stored against the message id rather than a message object, so a reaction
+   * that arrives before the message it refers to is not lost - which happens
+   * whenever delivery reorders.
+   */
+  async setReaction(
+    conversationId: string,
+    messageId: string,
+    emoji: string,
+    accountId: string,
+    active: boolean,
+  ): Promise<void> {
+    await this.patchMessage(conversationId, messageId, (message) => {
+      const reactions = { ...(message.reactions ?? {}) };
+      const reacted = new Set(reactions[emoji] ?? []);
+
+      if (active) reacted.add(accountId);
+      else reacted.delete(accountId);
+
+      if (reacted.size === 0) delete reactions[emoji];
+      else reactions[emoji] = [...reacted].sort();
+
+      return { ...message, reactions };
+    });
+  }
+
   private async patchMessage(
     conversationId: string,
     messageId: string,

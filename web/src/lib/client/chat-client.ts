@@ -55,6 +55,13 @@ export const TYPING_TTL_MS = 6000;
 export class ChatClientError extends Error {}
 
 export interface ChatEvents {
+  /**
+   * A message arrived from someone else.
+   *
+   * Separate from onConversationChanged, which also fires for the user's own
+   * sends, receipts and typing - none of which anyone wants to be told about.
+   */
+  onIncoming?: (conversationId: string, senderId: string, body: string) => void;
   /** A conversation's messages changed. */
   onConversationChanged?: (conversationId: string) => void;
   /** The conversation list changed. */
@@ -509,6 +516,18 @@ export class ChatClient {
     emoji: string,
     active = true,
   ): Promise<void> {
+    // Recorded locally first, so the reaction appears immediately and survives
+    // a send that fails. Sending and then discarding what was sent is how two
+    // users end up seeing different things with no way to tell why.
+    await this.store.setReaction(
+      conversationId,
+      messageId,
+      emoji,
+      this.accountId,
+      active,
+    );
+    this.events.onConversationChanged?.(conversationId);
+
     await this.sendContent(conversationId, {
       type: "reaction",
       targetId: messageId,
@@ -828,6 +847,7 @@ export class ChatClient {
           envelopeId: envelope.id,
         });
         await this.store.incrementUnread(conversationId);
+        this.events.onIncoming?.(conversationId, conversationId, content.body);
         this.events.onConversationChanged?.(conversationId);
         this.events.onConversationsChanged?.();
         // Confirms arrival, not reading: the user may not have looked yet.
@@ -870,8 +890,13 @@ export class ChatClient {
       }
 
       case "reaction":
-        // Reactions are surfaced as events; persisting them is future work and
-        // dropping one is harmless, unlike dropping a message.
+        await this.store.setReaction(
+          conversationId,
+          content.targetId,
+          content.emoji,
+          conversationId,
+          content.active,
+        );
         this.events.onConversationChanged?.(conversationId);
         break;
 
@@ -970,6 +995,7 @@ export class ChatClient {
           senderId: conversationId,
         });
         await this.store.incrementUnread(content.groupId);
+        this.events.onIncoming?.(content.groupId, conversationId, content.body);
         this.events.onConversationChanged?.(content.groupId);
         this.events.onConversationsChanged?.();
         break;

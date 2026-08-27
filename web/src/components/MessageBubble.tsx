@@ -18,6 +18,9 @@ interface Props {
   onDelete: (id: string) => void;
   onEdit: (id: string, body: string) => void;
   onDownload: (message: StoredMessage) => void;
+  onReact?: (id: string, emoji: string, active: boolean) => void;
+  /** This device's account, to tell your own reaction from someone else's. */
+  selfId?: string;
 }
 
 export function MessageBubble({
@@ -27,8 +30,11 @@ export function MessageBubble({
   onDelete,
   onEdit,
   onDownload,
+  onReact,
+  selfId,
 }: Props) {
   const [editing, setEditing] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [draft, setDraft] = useState(message.body);
 
   const outgoing = message.direction === "outgoing";
@@ -101,6 +107,31 @@ export function MessageBubble({
         message.body && <p className="message__body">{message.body}</p>
       )}
 
+      {message.reactions && Object.keys(message.reactions).length > 0 && (
+        <div className="reactions">
+          {Object.entries(message.reactions).map(([emoji, accounts]) => {
+            const mine = selfId !== undefined && accounts.includes(selfId);
+            return (
+              <button
+                key={emoji}
+                type="button"
+                className={"reaction" + (mine ? " reaction--mine" : "")}
+                onClick={() => onReact?.(message.id, emoji, !mine)}
+                aria-pressed={mine}
+                aria-label={`${emoji}, ${accounts.length} ${
+                  accounts.length === 1 ? "reaction" : "reactions"
+                }`}
+              >
+                <span aria-hidden="true">{emoji}</span>
+                {/* The count matters: the same emoji from two people is two
+                    facts, and a bare emoji hides the second. */}
+                <span className="reaction__count">{accounts.length}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <footer className="message__meta">
         <time className="message__time">{formatTime(message.timestamp)}</time>
 
@@ -130,6 +161,38 @@ export function MessageBubble({
           </button>
         )}
 
+        {onReact && (
+          <span className="message__react">
+            <button
+              type="button"
+              className="button button--link"
+              onClick={() => setPicking((v) => !v)}
+              aria-expanded={picking}
+              aria-label="Add a reaction"
+            >
+              +
+            </button>
+            {picking && (
+              <span className="picker" role="group" aria-label="Reactions">
+                {REACTION_CHOICES.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="picker__option"
+                    onClick={() => {
+                      onReact(message.id, emoji, true);
+                      setPicking(false);
+                    }}
+                    aria-label={emoji}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </span>
+            )}
+          </span>
+        )}
+
         {outgoing && !editing && message.status !== "failed" && (
           <>
             {!message.attachment && (
@@ -154,6 +217,9 @@ export function MessageBubble({
     </div>
   );
 }
+
+/** A small, fixed set: an emoji keyboard in a message list is unusable. */
+const REACTION_CHOICES = ["👍", "❤️", "😂", "🎉", "😮", "😢"];
 
 function bubbleClass(outgoing: boolean, extra = ""): string {
   return [

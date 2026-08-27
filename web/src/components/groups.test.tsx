@@ -192,3 +192,129 @@ describe("group chat view", () => {
     expect(screen.getByText(/separately for each member/i)).toBeDefined();
   });
 });
+
+describe("reactions and search in the chat view", () => {
+  const conversation = {
+    id: "c1",
+    displayName: "Alice",
+    lastActivity: 1,
+    unreadCount: 0,
+  };
+
+  function msg(overrides: Partial<StoredMessage> = {}): StoredMessage {
+    return {
+      id: "m1",
+      conversationId: "c1",
+      direction: "incoming",
+      body: "hello",
+      timestamp: Date.UTC(2026, 7, 27, 12, 0),
+      status: "delivered",
+      ...overrides,
+    };
+  }
+
+  function props(overrides = {}) {
+    return {
+      conversation,
+      messages: [msg()],
+      peerTyping: false,
+      onBack: noop,
+      onSend: noop,
+      onAttach: noop,
+      onTyping: noop,
+      onRetry: noop,
+      onDelete: noop,
+      onEdit: noop,
+      onDownload: noop,
+      ...overrides,
+    };
+  }
+
+  it("shows a reaction with its count", () => {
+    render(
+      <ChatView
+        {...props({
+          messages: [msg({ reactions: { "👍": ["alice", "bob"] } })],
+          selfId: "alice",
+        })}
+      />,
+    );
+
+    // A bare emoji hides the second person; the count is the point.
+    expect(screen.getByLabelText("👍, 2 reactions")).toBeDefined();
+  });
+
+  it("marks your own reaction as pressed", () => {
+    render(
+      <ChatView
+        {...props({
+          messages: [msg({ reactions: { "👍": ["alice"] } })],
+          selfId: "alice",
+        })}
+      />,
+    );
+    expect(screen.getByLabelText("👍, 1 reaction")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("toggles your own reaction off when clicked", async () => {
+    const onReact = vi.fn();
+    render(
+      <ChatView
+        {...props({
+          messages: [msg({ reactions: { "👍": ["alice"] } })],
+          selfId: "alice",
+          onReact,
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByLabelText("👍, 1 reaction"));
+    expect(onReact).toHaveBeenCalledWith("m1", "👍", false);
+  });
+
+  it("adds a reaction from the picker", async () => {
+    const onReact = vi.fn();
+    render(<ChatView {...props({ onReact, selfId: "alice" })} />);
+
+    await userEvent.click(screen.getByLabelText("Add a reaction"));
+    await userEvent.click(screen.getByLabelText("🎉"));
+
+    expect(onReact).toHaveBeenCalledWith("m1", "🎉", true);
+  });
+
+  it("filters the visible messages by search", async () => {
+    render(
+      <ChatView
+        {...props({
+          messages: [
+            msg({ id: "a", body: "lunch tomorrow" }),
+            msg({ id: "b", body: "unrelated" }),
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("unrelated")).toBeDefined();
+    await userEvent.type(
+      screen.getByLabelText("Search this conversation"),
+      "lunch",
+    );
+
+    expect(screen.getByText("lunch tomorrow")).toBeDefined();
+    expect(screen.queryByText("unrelated")).toBeNull();
+  });
+
+  it("says so when a search matches nothing", async () => {
+    render(<ChatView {...props()} />);
+
+    await userEvent.type(
+      screen.getByLabelText("Search this conversation"),
+      "zzzz",
+    );
+    // An empty list with no explanation reads as a broken conversation.
+    expect(screen.getByText(/no messages match/i)).toBeDefined();
+  });
+});
