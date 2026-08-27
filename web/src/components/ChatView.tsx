@@ -49,6 +49,16 @@ export function ChatView({
     bottom.current?.scrollIntoView({ block: "end" });
   }, [messages.length, peerTyping]);
 
+  // Filtering in memory rather than against an index: an unencrypted index of
+  // message text would undo the vault entirely.
+  const visible = useMemo(
+    () =>
+      query.trim()
+        ? searchMessages(messages, query).map((hit) => hit.message)
+        : messages,
+    [messages, query],
+  );
+
   if (!conversation) {
     return (
       <section className="chat chat--empty">
@@ -59,15 +69,6 @@ export function ChatView({
     );
   }
 
-  // Filtering in memory rather than against an index: an unencrypted index of
-  // message text would undo the vault entirely.
-  const visible = useMemo(
-    () =>
-      query.trim()
-        ? searchMessages(messages, query).map((hit) => hit.message)
-        : messages,
-    [messages, query],
-  );
   const groups = groupByDay(visible, Date.now());
 
   return (

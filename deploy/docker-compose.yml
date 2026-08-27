@@ -29,7 +29,7 @@ services:
       # Browser origins allowed to call from elsewhere. Empty means
       # same-origin only, which is the default deployment. `next dev` runs on
       # 3000, so it is listed here for local development.
-      CORS_ALLOWED_ORIGINS: "http://localhost:3000"
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:3100"
       # How often expired envelopes, challenges and tokens are deleted.
       # "0" turns the sweeper off for operators running their own cron.
       SWEEP_INTERVAL: "1h"

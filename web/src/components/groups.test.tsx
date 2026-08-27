@@ -318,3 +318,69 @@ describe("reactions and search in the chat view", () => {
     expect(screen.getByText(/no messages match/i)).toBeDefined();
   });
 });
+
+describe("ChatView hook stability", () => {
+  const conversation = {
+    id: "c1",
+    displayName: "Alice",
+    lastActivity: 1,
+    unreadCount: 0,
+  };
+
+  function props(overrides = {}) {
+    return {
+      conversation: undefined,
+      messages: [],
+      peerTyping: false,
+      onBack: noop,
+      onSend: noop,
+      onAttach: noop,
+      onTyping: noop,
+      onRetry: noop,
+      onDelete: noop,
+      onEdit: noop,
+      onDownload: noop,
+      ...overrides,
+    };
+  }
+
+  it("survives going from no conversation to an open one", () => {
+    // The search filter was memoised below the early return for "nothing
+    // selected", so opening a conversation changed the hook count and React
+    // tore the tree down. Found by driving the built app in a browser; every
+    // component test passed throughout, because none of them made this
+    // transition.
+    const { rerender } = render(<ChatView {...props()} />);
+    expect(screen.getByText(/select a conversation/i)).toBeDefined();
+
+    rerender(
+      <ChatView
+        {...props({
+          conversation,
+          messages: [
+            {
+              id: "m1",
+              conversationId: "c1",
+              direction: "incoming" as const,
+              body: "hello",
+              timestamp: Date.UTC(2026, 7, 27, 12, 0),
+              status: "delivered" as const,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("hello")).toBeDefined();
+    expect(screen.getByLabelText("Message")).toBeDefined();
+  });
+
+  it("survives closing a conversation again", () => {
+    const { rerender } = render(
+      <ChatView {...props({ conversation, messages: [] })} />,
+    );
+    rerender(<ChatView {...props()} />);
+
+    expect(screen.getByText(/select a conversation/i)).toBeDefined();
+  });
+});
