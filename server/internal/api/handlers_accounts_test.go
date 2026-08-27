@@ -45,9 +45,12 @@ func makeFixture(t *testing.T, mutate func(*registerRequest)) fixture {
 	msg = binary.BigEndian.AppendUint32(msg, 0)
 	sig := ed25519.Sign(priv, msg)
 
+	dhSig := ed25519.Sign(priv, append([]byte("shatters-idk-v1"), dh...))
+
 	req := registerRequest{}
 	req.IdentityKey = base64.StdEncoding.EncodeToString(pub)
 	req.IdentityDHKey = base64.StdEncoding.EncodeToString(dh)
+	req.IdentityDHSignature = base64.StdEncoding.EncodeToString(dhSig)
 	req.SignedPrekey.ID = 0
 	req.SignedPrekey.PublicKey = base64.StdEncoding.EncodeToString(spk)
 	req.SignedPrekey.Signature = base64.StdEncoding.EncodeToString(sig)
@@ -204,4 +207,71 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	return pool
+}
+
+func TestRegisterRejectsAnUnvouchedIdentityDHKey(t *testing.T) {
+	pool := testPool(t)
+	h := NewServer(pool)
+
+	cases := map[string]func(*registerRequest){
+		"missing signature": func(r *registerRequest) {
+			r.IdentityDHSignature = ""
+		},
+		"malformed signature": func(r *registerRequest) {
+			r.IdentityDHSignature = base64.StdEncoding.EncodeToString([]byte("short"))
+		},
+		"signature over a different key": func(r *registerRequest) {
+			other := make([]byte, crypto.PublicKeySize)
+			if _, err := rand.Read(other); err != nil {
+				t.Fatalf("rand: %v", err)
+			}
+			// A valid signature, just not for the key being registered - the
+			// substitution a malicious operator would make.
+			_, priv, err := ed25519.GenerateKey(rand.Reader)
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			r.IdentityDHSignature = base64.StdEncoding.EncodeToString(
+				ed25519.Sign(priv, append([]byte("shatters-idk-v1"), other...)))
+		},
+	}
+
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			fx := makeFixture(t, mutate)
+			// Stored unverified, this key would be the one thing in a bundle
+			// nobody had vouched for.
+			if rec := postRegister(t, h, fx.body); rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400 (%s)", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestBundleCarriesTheIdentityDHSignature(t *testing.T) {
+	pool := testPool(t)
+	h := NewServer(pool)
+
+	fx, token := registerAndAuth(t, h)
+	body, code := fetchBundle(t, h, crypto.AccountID(fx.identity), token)
+	if code != http.StatusOK {
+		t.Fatalf("bundle status = %d, want 200", code)
+	}
+
+	encoded, _ := body["identity_dh_signature"].(string)
+	sig, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(sig) != crypto.SignatureSize {
+		t.Fatalf("identity_dh_signature = %q, want a %d-byte signature",
+			encoded, crypto.SignatureSize)
+	}
+
+	// The client cannot verify what the server does not send.
+	dhEncoded, _ := body["identity_dh_key"].(string)
+	dh, err := base64.StdEncoding.DecodeString(dhEncoded)
+	if err != nil {
+		t.Fatalf("identity_dh_key: %v", err)
+	}
+	if err := crypto.VerifyIdentityDHKey(fx.identity, dh, sig); err != nil {
+		t.Errorf("bundle signature does not verify: %v", err)
+	}
 }

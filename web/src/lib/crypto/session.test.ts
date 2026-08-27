@@ -5,6 +5,7 @@ import {
   type KeyPair,
   generateIdentity,
   signDetached,
+  signIdentityDhKey,
   signedPrekeyMessage,
   sodium,
 } from "./identity";
@@ -64,6 +65,7 @@ async function makeResponder(oneTimePrekeyId?: number) {
   const bundle: PrekeyBundle = {
     identityKey: identity.signing.publicKey,
     identityDhKey: identity.dh.publicKey,
+    identityDhSignature: await signIdentityDhKey(identity),
     signedPrekey: { id: spkId, publicKey: spkPair.publicKey, signature },
     oneTimePrekey,
   };

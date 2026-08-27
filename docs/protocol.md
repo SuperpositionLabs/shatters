@@ -32,7 +32,9 @@ The server never performs symmetric decryption or any operation requiring secret
 A client device owns two keypairs generated locally at signup:
 
 - **Identity signing key**: Ed25519 `(ik_priv, ik_pub)`. Long-lived. Signs prekeys and authentication challenges.
-- **Identity DH key**: X25519 `(dh_priv, dh_pub)`. Long-lived. Used in X3DH.
+- **Identity DH key**: X25519 `(dh_priv, dh_pub)`. Long-lived. Used in X3DH. Published together with an Ed25519 signature over `"shatters-idk-v1" || dh_pub`, binding it to the identity key.
+
+The two identity keys are separate rather than one derived from the other. Deriving the X25519 key from the Ed25519 key is safe and well analysed — it is what Signal does — but reusing one key across two algorithms is a stronger claim than this design needs to make, and the signature costs 64 bytes once per account.
 
 **Account ID** = `base64url(SHA-256(domain || ik_pub))`, with `domain = "shatters-account-v1"`. The domain separator is a *prefix*, matching the `shatters-spk-v1` and `shatters-auth-v1` constructions below: it binds the digest to its purpose before any attacker-influenced bytes are absorbed. The raw public key is uploaded once at registration but all API addressing uses the account ID, keeping identifiers opaque.
 
@@ -46,6 +48,7 @@ There are no usernames, e-mails, or passwords anywhere in the system.
 {
   "identity_key":   "<base64 ed25519 public, 32 bytes>",
   "identity_dh_key": "<base64 x25519 public, 32 bytes>",
+  "identity_dh_signature": "<base64 ed25519 signature over \"shatters-idk-v1\" || identity_dh_key>",
   "signed_prekey": {
     "id":        0,
     "public_key": "<base64 x25519 public>",
@@ -59,6 +62,7 @@ Server-side validation (all public data):
 
 - Key lengths exactly 32 bytes after base64 decode.
 - Signed-prekey signature verifies against the identity key.
+- Identity-DH-key signature verifies against the identity key.
 - At most `MAX_PREKEYS` (default 100) one-time prekeys per upload.
 
 On success the server returns the derived account ID. Duplicate registrations with the same identity key return the existing account (idempotent).
@@ -77,7 +81,9 @@ Challenge issuance and verify endpoints are rate limited per IP (token bucket, n
 
 ## 6. Key directory
 
-- `GET /v1/accounts/{account_id}/bundle` *(authenticated)* → returns `{ identity_key, identity_dh_key, signed_prekey, one_time_prekey }`.
+- `GET /v1/accounts/{account_id}/bundle` *(authenticated)* → returns `{ identity_key, identity_dh_key, identity_dh_signature, signed_prekey, one_time_prekey }`.
+
+  **Every key in a bundle is vouched for by the identity key, and clients must verify all of them.** The server hands out this material, so anything unsigned is something the operator can substitute. The identity DH key was unsigned until this was fixed: session confidentiality still held, because `DH1` and `DH3` need the signed prekey's private half, but a substituted key made `DH2` contribute no entropy an attacker lacked — quietly reducing a four-DH handshake to three.
 - The one-time prekey is consumed atomically: `DELETE ... WHERE id IN (SELECT id ... FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING`. If none remain the response omits the field and the initiator falls back to the signed prekey (X3DH variant without OTK).
 - `POST /v1/accounts/me/prekeys` *(authenticated)* tops up one-time prekeys.
 

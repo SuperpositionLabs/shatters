@@ -40,9 +40,9 @@ func makeAccount(t *testing.T, pool *pgxpool.Pool) [16]byte {
 
 	var id [16]byte
 	err = pool.QueryRow(t.Context(),
-		`INSERT INTO accounts (identity_key, identity_dh_key, public_id)
-		 VALUES ($1, $2, encode(sha256($1), 'hex'))
-		 RETURNING id`, []byte(pub), dh).Scan(&id)
+		`INSERT INTO accounts (identity_key, identity_dh_key, identity_dh_signature, public_id)
+		 VALUES ($1, $2, $3, encode(sha256($1), 'hex'))
+		 RETURNING id`, []byte(pub), dh, make([]byte, 64)).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert account: %v", err)
 	}

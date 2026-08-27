@@ -12,6 +12,7 @@ import {
   type Identity,
   type SignedPrekey,
   sodium,
+  verifyIdentityDhKey,
   verifySignedPrekey,
 } from "./identity";
 import { HASH_LENGTH, hkdfSha256 } from "./kdf";
@@ -31,6 +32,13 @@ export interface PrekeyBundle {
   identityKey: Uint8Array;
   /** X25519 identity key - participates in DH2. */
   identityDhKey: Uint8Array;
+  /**
+   * Ed25519 signature over `"shatters-idk-v1" || identityDhKey`.
+   *
+   * Required. The server serves this key, so without a signature it is the one
+   * value in the bundle nobody has vouched for.
+   */
+  identityDhSignature: Uint8Array;
   signedPrekey: SignedPrekey;
   oneTimePrekey?: { id: number; publicKey: Uint8Array };
 }
@@ -145,6 +153,19 @@ export async function initiateX3DH(
 
   if (!(await verifySignedPrekey(bundle.identityKey, bundle.signedPrekey))) {
     throw new X3DHError("bundle signed prekey signature does not verify");
+  }
+  // The DH key feeds DH2. Unverified, a malicious server could substitute its
+  // own: the shared secret would still be safe, since DH1 and DH3 need the
+  // signed prekey's private half, but DH2 would contribute no entropy an
+  // attacker lacks - which is not what this handshake claims.
+  if (
+    !(await verifyIdentityDhKey(
+      bundle.identityKey,
+      bundle.identityDhKey,
+      bundle.identityDhSignature,
+    ))
+  ) {
+    throw new X3DHError("bundle identity DH key signature does not verify");
   }
 
   const ephemeral = s.crypto_kx_keypair();

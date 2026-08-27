@@ -4,6 +4,7 @@ import {
   type Identity,
   generateIdentity,
   signDetached,
+  signIdentityDhKey,
   signedPrekeyMessage,
   sodium,
 } from "./identity";
@@ -53,6 +54,7 @@ async function establishSession(): Promise<{
   const initiator = await initiateX3DH(aliceIdentity, {
     identityKey: bobIdentity.signing.publicKey,
     identityDhKey: bobIdentity.dh.publicKey,
+    identityDhSignature: await signIdentityDhKey(bobIdentity),
     signedPrekey: { id: spkId, publicKey: spkPair.publicKey, signature },
   });
   const responder = await respondX3DH(

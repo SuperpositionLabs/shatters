@@ -27,6 +27,7 @@ const (
 const (
 	domainAccount    = "shatters-account-v1"
 	domainSignedPrek = "shatters-spk-v1"
+	domainIdentityDH = "shatters-idk-v1"
 )
 
 var (
@@ -90,6 +91,29 @@ func VerifySignedPrekey(identityKey, spkPublicKey, sig []byte, id uint32) error 
 	msg = append(msg, domainSignedPrek...)
 	msg = append(msg, spkPublicKey...)
 	msg = binary.BigEndian.AppendUint32(msg, id)
+
+	if !ed25519.Verify(ed25519.PublicKey(identityKey), msg, sig) {
+		return ErrBadSignature
+	}
+	return nil
+}
+
+// VerifyIdentityDHKey checks that sig is a valid Ed25519 signature by
+// identityKey over domainIdentityDH || dhKey.
+//
+// Without this the X25519 identity key travels in prekey bundles with nothing
+// vouching for it, so an operator can substitute its own. Session
+// confidentiality survives - DH1 and DH3 need the signed prekey's private half
+// - but the substituted key contributes no entropy an attacker lacks, which is
+// not what X3DH claims to provide.
+func VerifyIdentityDHKey(identityKey, dhKey, sig []byte) error {
+	if len(identityKey) != PublicKeySize || len(sig) != SignatureSize {
+		return ErrBadSignature
+	}
+
+	msg := make([]byte, 0, len(domainIdentityDH)+len(dhKey))
+	msg = append(msg, domainIdentityDH...)
+	msg = append(msg, dhKey...)
 
 	if !ed25519.Verify(ed25519.PublicKey(identityKey), msg, sig) {
 		return ErrBadSignature

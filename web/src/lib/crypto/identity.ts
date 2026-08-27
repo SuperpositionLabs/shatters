@@ -13,6 +13,7 @@ import _sodium from "libsodium-wrappers-sumo";
 export const ACCOUNT_DOMAIN = "shatters-account-v1";
 export const SIGNED_PREKEY_DOMAIN = "shatters-spk-v1";
 export const AUTH_DOMAIN = "shatters-auth-v1";
+export const IDENTITY_DH_DOMAIN = "shatters-idk-v1";
 
 type Sodium = typeof _sodium;
 
@@ -121,6 +122,48 @@ export async function createAuthProof(
   nonce: Uint8Array,
 ): Promise<Uint8Array> {
   return signDetached(signingPrivateKey, authProofMessage(nonce));
+}
+
+/**
+ * Builds the byte string that binds an X25519 identity key to the Ed25519 one:
+ *   "shatters-idk-v1" || x25519_public
+ */
+export function identityDhMessage(dhPublicKey: Uint8Array): Uint8Array {
+  const domain = new TextEncoder().encode(IDENTITY_DH_DOMAIN);
+  const message = new Uint8Array(domain.length + dhPublicKey.length);
+  message.set(domain);
+  message.set(dhPublicKey, domain.length);
+  return message;
+}
+
+/** Signs this device's X25519 identity key with its Ed25519 identity key. */
+export async function signIdentityDhKey(
+  identity: Identity,
+): Promise<Uint8Array> {
+  return signDetached(
+    identity.signing.privateKey,
+    identityDhMessage(identity.dh.publicKey),
+  );
+}
+
+/**
+ * Verifies that an X25519 identity key really belongs to the identity that
+ * published it.
+ *
+ * The signed prekey has always been verified; this key was not, so an operator
+ * could substitute its own and control the DH2 input to X3DH.
+ */
+export async function verifyIdentityDhKey(
+  identityKey: Uint8Array,
+  dhKey: Uint8Array,
+  signature: Uint8Array,
+): Promise<boolean> {
+  const s = await sodium();
+  return s.crypto_sign_verify_detached(
+    signature,
+    identityDhMessage(dhKey),
+    identityKey,
+  );
 }
 
 export interface SignedPrekey {
