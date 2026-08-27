@@ -42,7 +42,8 @@ func main() {
 	}
 
 	service := api.NewServer(pool,
-		api.WithRateLimits(cfg.RateLimitPerMinute, cfg.RateLimitBurst))
+		api.WithRateLimits(cfg.RateLimitPerMinute, cfg.RateLimitBurst),
+		api.WithAllowedOrigins(cfg.AllowedOrigins))
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           service,

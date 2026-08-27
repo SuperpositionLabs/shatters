@@ -59,10 +59,30 @@ Then:
 | `DATABASE_URL` | — | PostgreSQL connection string (required) |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Sustained per-IP rate on unauthenticated endpoints |
 | `RATE_LIMIT_BURST` | `20` | Per-IP burst allowance |
+| `CORS_ALLOWED_ORIGINS` | *(none)* | Comma-separated browser origins allowed to call from elsewhere |
 
 Rate limiting is per-IP and in-memory only — no user is tracked. An invalid or
 non-positive limit refuses to start rather than falling back to a default, so a
 typo cannot silently leave the endpoints unprotected.
+
+`CORS_ALLOWED_ORIGINS` is empty by default, meaning **same-origin only** — the
+normal deployment puts client and server behind one reverse proxy. Set it only
+when the client is served from somewhere else (a CDN, or `next dev` on port
+3000). Origins are matched exactly, scheme and port included; `*` is rejected
+at startup rather than honoured. The WebSocket handshake reads the same list.
+
+For local development against `next dev`, point the client at the API and
+allow its origin:
+
+```sh
+# web/.env.local
+NEXT_PUBLIC_SHATTERS_API=http://localhost:8080
+```
+
+```sh
+# already set in deploy/docker-compose.yml
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+```
 
 Run the server test suite:
 
