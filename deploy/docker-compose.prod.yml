@@ -1,0 +1,87 @@
+# Production stack. See docs/deployment.md.
+#
+# One domain, one reverse proxy, client and API same-origin. That is the
+# arrangement the protocol assumes (§11): TLS terminates at the proxy, and
+# because the browser reaches both through it, CORS_ALLOWED_ORIGINS stays empty
+# and the WebSocket origin check passes without configuration.
+#
+# Copy .env.example to .env and fill it in first. Nothing here has a default
+# password: a stack that starts with a guessable one is worse than a stack that
+# refuses to start.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shatters
+      # No default. Compose fails if it is unset, which is the point.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: shatters
+    # Deliberately no `ports`. The API reaches it over the compose network;
+    # publishing 5432 on a VPS exposes it to the internet unless the operator
+    # happens to have a firewall, which is not something to rely on.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shatters -d shatters"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  server:
+    build:
+      context: ../server
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://shatters:${POSTGRES_PASSWORD:?}@db:5432/shatters?sslmode=disable
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-20}
+      SWEEP_INTERVAL: ${SWEEP_INTERVAL:-1h}
+      # Caddy is the single hop in front. Without this every request looks
+      # like it came from the proxy, so all users share one rate-limit bucket
+      # and throttle each other. Raise it only if you add another proxy in
+      # front; a count larger than reality lets callers forge their address.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-1}
+      # Intentionally unset: the client is served from the same origin, so
+      # there is no cross-origin caller to allow. Setting it here would widen
+      # the allowlist for no reason.
+    # Not published to the host either. Only the proxy talks to it.
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../web
+    restart: unless-stopped
+    environment:
+      # Unset on purpose. The client defaults to its own origin, which the
+      # proxy also routes to the API, so one origin covers both.
+      NODE_ENV: production
+    depends_on:
+      - server
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SHATTERS_DOMAIN: ${SHATTERS_DOMAIN:?set SHATTERS_DOMAIN in .env}
+      TLS_EMAIL: ${TLS_EMAIL:?set TLS_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates persist across restarts; without this the stack requests
+      # new ones on every deploy and meets the issuer's rate limit.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - server
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

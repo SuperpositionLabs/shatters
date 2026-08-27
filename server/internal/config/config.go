@@ -37,6 +37,9 @@ type Config struct {
 	// SweepInterval is how often expired rows are deleted. Zero disables the
 	// sweeper, for operators who prefer their own cron.
 	SweepInterval time.Duration
+	// TrustedProxies is how many reverse proxies sit in front of this process.
+	// Zero means none, and the peer address is used directly.
+	TrustedProxies int
 }
 
 // Load reads configuration from the environment and validates it.
@@ -49,6 +52,7 @@ type Config struct {
 //	RATE_LIMIT_BURST      - per-IP burst allowance (default 20)
 //	CORS_ALLOWED_ORIGINS  - comma-separated browser origins (default: none)
 //	SWEEP_INTERVAL        - housekeeping period, e.g. "1h"; "0" disables it
+//	TRUSTED_PROXIES       - reverse proxy hops in front (default 0)
 func Load() (Config, error) {
 	port := envOr("PORT", "8080")
 	n, err := strconv.Atoi(port)
@@ -80,7 +84,13 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	trustedProxies, err := nonNegativeInt("TRUSTED_PROXIES", 0)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
+		TrustedProxies:     trustedProxies,
 		SweepInterval:      sweepInterval,
 		AllowedOrigins:     origins,
 		Addr:               fmt.Sprintf(":%d", n),
@@ -169,6 +179,23 @@ func durationOr(key string, fallback time.Duration) (time.Duration, error) {
 	}
 	if value < 0 {
 		return 0, fmt.Errorf("config: %s must not be negative, got %s", key, value)
+	}
+	return value, nil
+}
+
+// nonNegativeInt parses an optional count that may legitimately be zero.
+func nonNegativeInt(key string, fallback int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("config: invalid %s %q: not an integer", key, raw)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("config: %s must not be negative, got %d", key, value)
 	}
 	return value, nil
 }

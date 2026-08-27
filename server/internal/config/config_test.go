@@ -193,3 +193,43 @@ func TestLoadRejectsBadSweepInterval(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadParsesTrustedProxies(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("TRUSTED_PROXIES", "2")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.TrustedProxies != 2 {
+		t.Errorf("TrustedProxies = %d, want 2", cfg.TrustedProxies)
+	}
+}
+
+func TestLoadDefaultsToNoTrustedProxies(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	// Trusting X-Forwarded-For on a directly reachable server lets anyone pick
+	// their own address, so the default has to be the cautious one.
+	if cfg.TrustedProxies != 0 {
+		t.Errorf("TrustedProxies = %d, want 0", cfg.TrustedProxies)
+	}
+}
+
+func TestLoadRejectsNegativeTrustedProxies(t *testing.T) {
+	for _, value := range []string{"-1", "one"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://localhost/test")
+			t.Setenv("TRUSTED_PROXIES", value)
+
+			if _, err := Load(); err == nil {
+				t.Errorf("Load(TRUSTED_PROXIES=%q) error = nil, want error", value)
+			}
+		})
+	}
+}

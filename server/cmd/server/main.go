@@ -50,7 +50,8 @@ func main() {
 
 	service := api.NewServer(pool,
 		api.WithRateLimits(cfg.RateLimitPerMinute, cfg.RateLimitBurst),
-		api.WithAllowedOrigins(cfg.AllowedOrigins))
+		api.WithAllowedOrigins(cfg.AllowedOrigins),
+		api.WithTrustedProxies(cfg.TrustedProxies))
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           service,
