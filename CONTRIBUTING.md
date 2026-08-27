@@ -65,6 +65,27 @@ Never mix a feature with an unrelated refactor in one commit.
 ```sh
 cd deploy && docker compose up --build   # postgres + server
 cd server && go test ./...               # backend tests (set DATABASE_URL for db tests)
+cd web && npm test                       # client unit tests (no server needed)
 ```
 
 Integration tests skip automatically when `DATABASE_URL` is unset.
+
+### End-to-end suite
+
+`web/e2e/` runs the real client against a running server — registration,
+X3DH, the ratchet, WebSocket push and the offline queue — which is the only
+place a client/server contract drift shows up. It needs a live stack:
+
+```sh
+cd web && SHATTERS_E2E_URL=http://localhost:8080 npm run test:e2e
+```
+
+Unlike the integration tests, this one **fails** rather than skips when the
+variable is unset: a green run that quietly tested nothing is worse than no
+suite at all. `npm test` never includes it, so the unit suite stays runnable
+without a server.
+
+Note that the default rate limit (60/min, burst 20) will throttle the suite,
+since enrolling one account costs three limited requests. CI raises
+`RATE_LIMIT_BURST`; locally, either do the same or expect the later tests to
+fail with `rate limit exceeded`.
