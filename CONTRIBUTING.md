@@ -52,7 +52,9 @@ Never mix a feature with an unrelated refactor in one commit.
 ## Pull requests
 
 - Title mirrors the primary commit; body contains `Closes #<issue>`.
-- CI must be green: golangci-lint, gosec, govulncheck, and `go test -race ./...`.
+- CI must be green: golangci-lint, gosec, govulncheck, `go test -race ./...`,
+  a bounded fuzz pass, `npm audit --audit-level=high`, and the end-to-end
+  suite against a built image.
 - Definition of Done:
   - [ ] Unit tests cover the new paths (`go test -race`)
   - [ ] Lint and gosec report zero findings

@@ -189,6 +189,12 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: install dependencies
         run: npm ci
+      # The Go side has govulncheck on every pull request; the client had no
+      # equivalent. Gated on high and critical only: a check that fails on
+      # every transitive moderate gets disabled, and a disabled check is worse
+      # than none.
+      - name: dependency audit
+        run: npm audit --audit-level=high
       - name: unit tests
         run: npm test
       - name: typecheck
